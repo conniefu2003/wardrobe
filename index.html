@@ -406,7 +406,21 @@ const OLD_CAT = {
   '套装':'上装','家居服':'睡衣','贴身衣物':'睡衣',
   '首饰':'围巾','眼镜':'围巾','手套':'围巾'
 };
-const SIZES = ['XS','S','M','L','XL','均码','34','35','36','37','38','39','40','41','42','43'];
+const SIZES_CLOTH = ['XS','S','M','L','XL','2XL','3XL','4XL','均码'];
+const SIZES_SHOE  = ['35','36','37','38','39','40','41','42','均码'];
+function sizesFor(cat){ return cat==='鞋' ? SIZES_SHOE : SIZES_CLOTH; }
+const OWNER_CODE = {'connie':'CO','daniel':'DN','kevin':'KV','home':'HM'};
+function nextNo(owner){
+  const p = OWNER_CODE[owner] || 'CO';
+  let mx = 0;
+  DB.items.forEach(function(i){
+    if(i.no && i.no.indexOf(p+'-') === 0){
+      const n = parseInt(i.no.slice(p.length+1), 10);
+      if(n > mx) mx = n;
+    }
+  });
+  return p + '-' + String(mx+1).padStart(3,'0');
+}
 const SLEEVE_CATS = ['上装','连衣裙','外套','套装'];
 const SEASONS = ['春秋','夏','冬'];
 const OWNERS = [['connie','Connie衣橱'],['daniel','Daniel衣橱'],['kevin','Kevin衣橱'],['home','床品']];
@@ -573,8 +587,11 @@ function migrate(){
     if(!it.scene.length) it.scene = ['休闲'];
     it.boughtAt = it.boughtAt || '';
     it.retiredAt = it.retiredAt || '';
+    it.retirePlan = it.retirePlan || '';
+    it.retireReason = it.retireReason || '';
     it.pair = it.pair || '';
     it.size = it.size || '';
+    if(!it.no) it.no = nextNo(it.owner);
     if(!it.sleeve) it.sleeve = '';
     if(!it.material) it.material = '';
     if(!it.sub) it.sub = '';
@@ -782,7 +799,9 @@ function pickOutfits(opts){
 /* ================= 渲染：今天穿 ================= */
 function pieceNode(p){
   const d = el('div','piece');
-  d.innerHTML = '<div class="ph"><img src="'+p.photo+'" alt=""></div><div class="nm">'+esc(p.name)+'</div>';
+  d.innerHTML = '<div class="ph"><img src="'+p.photo+'" alt=""></div>'
+    + (p.no? '<div class="nm" style="color:#3f5b4a;font-weight:600">'+esc(p.no)+'</div>':'')
+    + '<div class="nm">'+esc(p.name)+'</div>';
   return d;
 }
 function isSaved(o){
@@ -1068,7 +1087,7 @@ function buildTable(title, list){
   }
   const wrap = el('div','tablewrap');
   const tb = el('table','tb');
-  const head = ['照片','名称','品类','款式','袖长','材质','颜色','季节','场合','频率','位置','购入','淘汰','搭配','操作'];
+  const head = ['照片','编号','名称','品类','款式','袖长','材质','颜色','季节','场合','频率','位置','购入','淘汰','搭配','操作'];
   const tr0 = el('tr');
   head.forEach(x=>tr0.appendChild(el('th',null,x)));
   const thead = el('thead'); thead.appendChild(tr0); tb.appendChild(thead);
@@ -1084,7 +1103,7 @@ function buildTable(title, list){
     const l = locOf(it);
     const cells = [
       '<img src="'+it.photo+'" alt="">',
-      esc(it.name), esc(it.cat), esc(it.sub), esc(it.sleeve), esc(it.material), esc(it.color),
+      esc(it.no||''), esc(it.name), esc(it.cat), esc(it.sub), esc(it.sleeve), esc(it.material), esc(it.color),
       (it.season||[]).join('/'), (it.scene||[]).join('/'), esc(it.wear),
       l? esc(locText(l)) : '在外',
       esc(it.boughtAt), esc(it.retiredAt), esc(it.pair)
@@ -1092,7 +1111,7 @@ function buildTable(title, list){
     cells.forEach((c,i)=>{
       const td = el('td');
       if(i===0) td.innerHTML = c;
-      else { td.textContent = c; if(i===13||i===7||i===8) { td.className='cut'; td.title = c; } }
+      else { td.textContent = c; if(i===14||i===8||i===9) { td.className='cut'; td.title = c; } }
       tr.appendChild(td);
     });
     const tdAct = el('td');
@@ -1237,7 +1256,7 @@ function buildCart(title, list){
     const line2 = [ (it.season||[]).join('/'), (it.scene||[]).join('/'), it.wear,
       l? locText(l) : '在外', it.boughtAt? '购'+it.boughtAt : '', it.retiredAt? '淘汰'+it.retiredAt : ''
     ].filter(Boolean).join(' · ');
-    info.innerHTML = '<div class="cname">'+esc(it.name)+'</div>'
+    info.innerHTML = '<div class="cname">'+(it.no? '<span style="color:var(--accent);font-size:12px;margin-right:6px">'+esc(it.no)+'</span>':'')+esc(it.name)+'</div>'
       + '<div class="cmeta">'+esc(line1||'还没填品类')+'</div>'
       + '<div class="cmeta">'+esc(line2)+'</div>'
       + (it.pair? '<div class="cmeta">搭配：'+esc(it.pair)+'</div>' : '');
@@ -1258,13 +1277,13 @@ function csvCell(v){
   return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
 }
 document.getElementById('btnCsv').onclick = ()=>{
-  const head = ['名称','归属','品类','款式','袖长','材质','颜色','季节','场合','频率','位置','购入','淘汰','搭配','描述'];
+  const head = ['编号','名称','归属','品类','款式','袖长','材质','颜色','尺码','季节','场合','频率','位置','购入','预计淘汰','已淘汰','淘汰原因','搭配','描述'];
   const rows = [head];
   DB.items.filter(i=>i.owner===DB.owner).forEach(it=>{
     const l = locOf(it);
-    rows.push([it.name, ownerName(it.owner), it.cat, it.sub, it.sleeve, it.material, it.color,
+    rows.push([it.no, it.name, ownerName(it.owner), it.cat, it.sub, it.sleeve, it.material, it.color, it.size,
       (it.season||[]).join('/'), (it.scene||[]).join('/'), it.wear,
-      l? locText(l) : '在外', it.boughtAt, it.retiredAt, it.pair, it.desc]);
+      l? locText(l) : '在外', it.boughtAt, it.retirePlan, it.retiredAt, it.retireReason, it.pair, it.desc]);
   });
   const csv = '\ufeff' + rows.map(r=>r.map(csvCell).join(',')).join('\r\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
@@ -1501,14 +1520,15 @@ function openItem(id, jumpPair){
   const it = DB.items.find(x=>x.id===id);
   if(!it) return;
   sheet.innerHTML='';
-  sheetHead(it.name, {onDelete: function(){ armDelete(it, this); }});
+  sheetHead((it.no? it.no+' · ':'') + it.name, {onDelete: function(){ armDelete(it, this); }});
 
   const f = el('div','field');
   f.innerHTML = '<div class="pick" style="aspect-ratio:4/5;cursor:default"><img src="'+it.photo+'" alt=""></div>';
   sheet.appendChild(f);
 
   const info = el('div','why');
-  info.innerHTML = ownerName(it.owner)+' ｜ '+it.cat+(it.sub?' · '+it.sub:'')+(it.sleeve?' · '+it.sleeve:'')
+  info.innerHTML = (it.no? '<b>'+esc(it.no)+'</b> ｜ ':'') + ownerName(it.owner)+' ｜ '
+    + it.cat+(it.sub?' · '+it.sub:'')+(it.sleeve?' · '+it.sleeve:'')
     + (it.material?' · '+it.material:'') + ' ｜ '+it.color+' ｜ '+(it.season||[]).join('/');
   sheet.appendChild(info);
 
@@ -1653,11 +1673,11 @@ function openItem(id, jumpPair){
   ipd.onblur = ()=> save();
   fd.appendChild(ipd); sheet.appendChild(fd);
 
-  // 尺码 / 购入 / 淘汰 / 搭配
+  // 尺码（按品类给不同的码）
   const fm = el('div','field');
-  fm.appendChild(el('div','lab','尺码'));
+  fm.appendChild(el('div','lab','尺码'+(it.cat==='鞋'?'（鞋码）':'（衣服码）')));
   const csz = el('div','chips');
-  SIZES.forEach(s=>{
+  sizesFor(it.cat).forEach(s=>{
     const b = el('button','chip'+(it.size===s?' on':''), s);
     b.onclick = ()=>{ it.size = it.size===s?'':s; save(); openItem(it.id, jumpPair); };
     csz.appendChild(b);
@@ -1665,18 +1685,34 @@ function openItem(id, jumpPair){
   fm.appendChild(csz); sheet.appendChild(fm);
 
   const fb2 = el('div','field');
-  fb2.appendChild(el('div','lab','什么时候买的'));
-  const bp = el('input'); bp.type='text'; bp.value = it.boughtAt||''; bp.placeholder='2023-04 或 2023 冬';
+  fb2.appendChild(el('div','lab','购买日期'));
+  const bp = el('input'); bp.type='text'; bp.value = it.boughtAt||''; bp.placeholder='2023-04';
   bp.oninput = e=>{ it.boughtAt = e.target.value; };
   bp.onblur = ()=> save();
   fb2.appendChild(bp); sheet.appendChild(fb2);
 
+  const frp = el('div','field');
+  frp.appendChild(el('div','lab','预计淘汰日期（可空）'));
+  const rpp = el('input'); rpp.type='text'; rpp.value = it.retirePlan||''; rpp.placeholder='2026-10';
+  rpp.oninput = e=>{ it.retirePlan = e.target.value; };
+  rpp.onblur = ()=> save();
+  frp.appendChild(rpp); sheet.appendChild(frp);
+
   const fr = el('div','field');
-  fr.appendChild(el('div','lab','什么时候淘汰（填了就不参与换季）'));
-  const rp = el('input'); rp.type='text'; rp.value = it.retiredAt||''; rp.placeholder='2025-03 送人 / 起球扔了';
+  fr.appendChild(el('div','lab','已淘汰日期（填了就不参与换季）'));
+  const rp = el('input'); rp.type='text'; rp.value = it.retiredAt||''; rp.placeholder='2025-03';
   rp.oninput = e=>{ it.retiredAt = e.target.value; };
   rp.onblur = ()=> save();
-  fr.appendChild(rp); sheet.appendChild(fr);
+  fr.appendChild(rp);
+  const frm = el('div','field');
+  frm.appendChild(el('div','lab','淘汰原因（可空）'));
+  const crm = el('div','chips');
+  ['起球','褪色','不合身','不喜欢','穿旧了','送人'].forEach(k=>{
+    const b = el('button','chip'+(it.retireReason===k?' on':''), k);
+    b.onclick = ()=>{ it.retireReason = it.retireReason===k?'':k; it.retiredAt = it.retiredAt || new Date().toISOString().slice(0,7); save(); openItem(it.id, jumpPair); };
+    crm.appendChild(b);
+  });
+  frm.appendChild(crm); sheet.appendChild(fr); sheet.appendChild(frm);
 
   const fp = el('div','field');
   fp.appendChild(el('div','lab','怎么搭配'));
@@ -1685,16 +1721,23 @@ function openItem(id, jumpPair){
   pp.onblur = ()=> save();
   fp.appendChild(pp); sheet.appendChild(fp);
 
+  // 名称（直接改，不用再点「改名」）
+  const fname = el('div','field');
+  fname.appendChild(el('div','lab','名称'));
+  const nIp = el('input'); nIp.type='text'; nIp.value = it.name||'';
+  nIp.placeholder='白衬衫 / 深蓝直筒牛仔';
+  nIp.oninput = e=>{ it.name = e.target.value; };
+  nIp.onblur = ()=> save();
+  fname.appendChild(nIp); sheet.appendChild(fname);
+
   // 操作
   const acts = el('div','outfit-actions'); acts.style.marginTop='6px';
   const bPair = el('button','mini on','和它配什么');
-  const bName = el('button','mini ghost','改名');
   const bDel2 = el('button','mini ghost','删除这件');
   bDel2.style.color = 'var(--warn)';
   bDel2.style.borderColor = '#f0d9cf';
   bDel2.onclick = ()=> armDelete(it, bDel2);
-  bName.onclick = ()=>{ const n = prompt('叫什么？', it.name); if(n&&n.trim()){ it.name=n.trim(); save(); openItem(it.id, jumpPair);} };
-  acts.appendChild(bPair); acts.appendChild(bName); acts.appendChild(bDel2);
+  acts.appendChild(bPair); acts.appendChild(bDel2);
   sheet.appendChild(acts);
 
   const out = el('div'); sheet.appendChild(out);
@@ -1715,8 +1758,13 @@ function openItem(id, jumpPair){
   bPair.onclick = showPair;
   if(jumpPair) setTimeout(showPair, 60);
 
+  const saveBtn = el('button','cta','保存并关闭');
+  saveBtn.style.marginTop='20px';
+  saveBtn.onclick = ()=>{ save(); closeSheet(); renderAll(); toast('已保存 · '+(it.no||'')+' '+it.name); };
+  sheet.appendChild(saveBtn);
+
   const del = el('button','cta danger','从衣橱删掉这件');
-  del.style.marginTop='18px';
+  del.style.marginTop='10px';
   del.onclick = ()=> armDelete(it, del);
   sheet.appendChild(del);
   mask.classList.add('on');
@@ -1973,6 +2021,7 @@ function commitDraft(){
   const name = (draft.name||'').trim() || (draft.color||'') + (draft.sub||draft.cat||'');
   DB.items.unshift({
     id: draft.id, photo: draft.photo, name, owner: draft.owner||DB.owner,
+    no: nextNo(draft.owner||DB.owner),
     cat: draft.cat, sub: draft.sub, sleeve: draft.sleeve||'', material: draft.material||'',
     desc: draft.desc||'', size: draft.size||'',
     boughtAt: draft.boughtAt||'', pair: draft.pair||'', retiredAt: '',
@@ -1997,6 +2046,7 @@ function quickMsg(title, sub){
 function pushItem(dataURL, col){
   DB.items.unshift({
     id: uid(), photo: dataURL, name: nextUncatName(), owner: DB.owner,
+    no: nextNo(DB.owner),
     cat: '待分类', sub: '', sleeve: '', material: '', desc: '',
     color: (col&&col.name)||'灰', hex: (col&&col.hex)||'#9b9b9b',
     season: ['春秋','夏','冬'], scene: ['通勤','休闲'],
