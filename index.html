@@ -343,10 +343,7 @@
 <div id="batchbar">
   <span class="cnt" id="selCount">已选 0 件</span>
   <button class="mini" id="bAll">全选</button>
-  <button class="mini on" id="bClass">分类</button>
-  <button class="mini" id="bToLoc">收进位置</button>
-  <button class="mini" id="bOutLoc">拿出来</button>
-  <button class="mini" id="bWearNever">标记从未穿</button>
+  <button class="mini on" id="bClass">批量处理</button>
   <button class="mini" id="bDelete">删除</button>
   <button class="mini ghost" id="bCancel">取消</button>
 </div>
@@ -2172,25 +2169,6 @@ function exitSelect(){
   renderGrid();
 }
 document.getElementById('bCancel').onclick = ()=>{ sel.clear(); exitSelect(); refreshTab(); };
-document.getElementById('bToLoc').onclick = ()=>{
-  if(!sel.size){ toast('先选衣服'); return; }
-  openLocPick(id=>{
-    DB.items.forEach(i=>{ if(sel.has(i.id)) i.locId=id; });
-    save(); sel.clear(); exitSelect(); renderAll();
-    const l = DB.locations.find(x=>x.id===id);
-    toast('已收进 '+(l?locText(l):''));
-  });
-};
-document.getElementById('bOutLoc').onclick = ()=>{
-  if(!sel.size){ toast('先选衣服'); return; }
-  DB.items.forEach(i=>{ if(sel.has(i.id)) i.locId=''; });
-  save(); sel.clear(); exitSelect(); renderAll(); toast('已拿出来');
-};
-document.getElementById('bWearNever').onclick = ()=>{
-  if(!sel.size){ toast('先选衣服'); return; }
-  DB.items.forEach(i=>{ if(sel.has(i.id)){ i.wear='从未穿'; if(!i.reason) i.reason=REASONS[0]; } });
-  save(); sel.clear(); exitSelect(); renderAll(); toast('已标记从未穿');
-};
 document.getElementById('bDelete').onclick = ()=>{
   if(!sel.size){ toast('先选衣服'); return; }
   if(!confirm('删掉选中的 '+sel.size+' 件？删了不能恢复。')) return;
@@ -2220,44 +2198,154 @@ document.getElementById('bClass').onclick = ()=>{
   openClassSheet(Array.from(sel), function(){ sel.clear(); syncBatchBar(); refreshTab(); });
 };
 
-/* 分类弹层：传 id 数组，单个和批量共用 */
+/* 批量处理：品类/款式/季节/场合/频率/位置 一次设完 */
 function openClassSheet(ids, after){
-  let cat='上装', sub='';
+  const st = {cat:null, sub:null, season:null, scene:null, wear:null, locId:null, locSet:false};
   const draw = ()=>{
-    sheet.innerHTML=''; sheetHead('分类 · '+ids.length+' 件');
+    sheet.innerHTML=''; sheetHead('批量处理 · '+ids.length+' 件');
+    sheet.appendChild(el('div','hint','只改你点过的项，没点的保持原样。'));
+
+    // 品类
     const f1 = el('div','field');
-    f1.appendChild(el('div','lab','选品类'));
+    f1.appendChild(el('div','lab','品类'));
     const row = el('div','chips');
+    const bNone = el('button','chip'+(st.cat===null?' on':''), '不改');
+    bNone.onclick = ()=>{ st.cat=null; st.sub=null; draw(); };
+    row.appendChild(bNone);
     CATS.forEach(c=>{
-      const b = el('button','chip'+(cat===c?' on':''), c);
-      b.onclick = ()=>{ cat=c; sub=''; draw(); };
+      const b = el('button','chip'+(st.cat===c?' on':''), c);
+      b.onclick = ()=>{ st.cat=c; st.sub=null; draw(); };
       row.appendChild(b);
     });
-    f1.appendChild(row);
-    sheet.appendChild(f1);
-    const subs = SUBCATS[cat]||[];
-    if(subs.length){
-      const f2 = el('div','field');
-      f2.appendChild(el('div','lab','款式（可空，只改名称）'));
-      const c2 = el('div','chips');
-      subs.forEach(s=>{
-        const b = el('button','chip'+(sub===s?' on':''), s);
-        b.onclick = ()=>{ sub = sub===s?'':s; draw(); };
-        c2.appendChild(b);
-      });
-      f2.appendChild(c2); sheet.appendChild(f2);
+    f1.appendChild(row); sheet.appendChild(f1);
+
+    if(st.cat){
+      const subs = SUBCATS[st.cat]||[];
+      if(subs.length){
+        const f2 = el('div','field');
+        f2.appendChild(el('div','lab','款式'));
+        const c2 = el('div','chips');
+        const b0 = el('button','chip'+(st.sub===null?' on':''), '不限');
+        b0.onclick = ()=>{ st.sub=null; draw(); };
+        c2.appendChild(b0);
+        subs.forEach(s=>{
+          const b = el('button','chip'+(st.sub===s?' on':''), s);
+          b.onclick = ()=>{ st.sub = st.sub===s?null:s; draw(); };
+          c2.appendChild(b);
+        });
+        f2.appendChild(c2); sheet.appendChild(f2);
+      }
     }
-    const cta = el('button','cta','设成「'+cat+(sub?' · '+sub:'')+'」');
+
+    // 季节（多选）
+    const f3 = el('div','field');
+    f3.appendChild(el('div','lab','季节（多选，点了才会改）'));
+    const c3 = el('div','chips');
+    const b3 = el('button','chip'+(st.season===null?' on':''), '不改');
+    b3.onclick = ()=>{ st.season=null; draw(); };
+    c3.appendChild(b3);
+    SEASONS.forEach(s=>{
+      const on = st.season && st.season.includes(s);
+      const b = el('button','chip'+(on?' on':''), s);
+      b.onclick = ()=>{
+        const cur = st.season || [];
+        const nx = on ? cur.filter(x=>x!==s) : cur.concat(s);
+        st.season = nx.length ? nx : null;
+        draw();
+      };
+      c3.appendChild(b);
+    });
+    f3.appendChild(c3); sheet.appendChild(f3);
+
+    // 场合（多选）
+    const f4 = el('div','field');
+    f4.appendChild(el('div','lab','场合（多选，点了才会改）'));
+    const c4 = el('div','chips');
+    const b4 = el('button','chip'+(st.scene===null?' on':''), '不改');
+    b4.onclick = ()=>{ st.scene=null; draw(); };
+    c4.appendChild(b4);
+    SCENES.forEach(s=>{
+      const on = st.scene && st.scene.includes(s);
+      const b = el('button','chip'+(on?' on':''), s);
+      b.onclick = ()=>{
+        const cur = st.scene || [];
+        const nx = on ? cur.filter(x=>x!==s) : cur.concat(s);
+        st.scene = nx.length ? nx : null;
+        draw();
+      };
+      c4.appendChild(b);
+    });
+    f4.appendChild(c4); sheet.appendChild(f4);
+
+    // 频率
+    const f5 = el('div','field');
+    f5.appendChild(el('div','lab','穿得勤吗'));
+    const c5 = el('div','chips');
+    const b5 = el('button','chip'+(st.wear===null?' on':''), '不改');
+    b5.onclick = ()=>{ st.wear=null; draw(); };
+    c5.appendChild(b5);
+    WEARS.forEach(w=>{
+      const b = el('button','chip'+(st.wear===w?' on':''), w);
+      b.onclick = ()=>{ st.wear = st.wear===w?null:w; draw(); };
+      c5.appendChild(b);
+    });
+    f5.appendChild(c5); sheet.appendChild(f5);
+
+    // 位置
+    const f6 = el('div','field');
+    f6.appendChild(el('div','lab','存放位置'));
+    const c6 = el('div','chips');
+    const b6 = el('button','chip'+(st.locSet===false?' on':''), '不改');
+    b6.onclick = ()=>{ st.locSet=false; st.locId=null; draw(); };
+    c6.appendChild(b6);
+    const bOut = el('button','chip'+(st.locSet && st.locId===''?' on':''), '在外');
+    bOut.onclick = ()=>{ st.locSet=true; st.locId=''; draw(); };
+    c6.appendChild(bOut);
+    DB.locations.filter(l=>!l.owner || l.owner===DB.owner).forEach(l=>{
+      const b = el('button','chip'+(st.locSet && st.locId===l.id?' on':''), locText(l));
+      b.onclick = ()=>{ st.locSet=true; st.locId=l.id; draw(); };
+      c6.appendChild(b);
+    });
+    const bNl = el('button','chip','＋ 新位置');
+    bNl.onclick = ()=> openLocForm(nl=>{ st.locSet=true; st.locId=nl.id; draw(); });
+    c6.appendChild(bNl);
+    f6.appendChild(c6); sheet.appendChild(f6);
+
+    // 摘要
+    const parts = [];
+    if(st.cat) parts.push('品类='+st.cat+(st.sub?'·'+st.sub:''));
+    if(st.season) parts.push('季节='+st.season.join('/'));
+    if(st.scene) parts.push('场合='+st.scene.join('/'));
+    if(st.wear) parts.push('频率='+st.wear);
+    if(st.locSet) parts.push('位置='+(st.locId? locText(DB.locations.find(x=>x.id===st.locId)||{}) : '在外'));
+    const missing = [];
+    if(!st.cat) missing.push('品类');
+    if(!st.season) missing.push('季节');
+    if(!st.scene) missing.push('场合');
+    if(!st.wear) missing.push('频率');
+    if(!st.locSet) missing.push('位置');
+    const cta = el('button','cta', missing.length
+      ? '还差：' + missing.join('、')
+      : '保存 · 改这 '+ids.length+' 件（'+parts.join('，')+'）');
+    cta.disabled = missing.length > 0;
     cta.onclick = ()=>{
-      const isHome = cat==='床品';
+      const isHome = st.cat==='床品';
       DB.items.forEach(it=>{
         if(ids.indexOf(it.id) < 0) return;
-        it.cat = cat; it.sub = sub;
-        if(/^待分类/.test(it.name) || !it.name) it.name = (it.color||'') + (sub||cat);
+        if(st.cat){
+          it.cat = st.cat;
+          if(st.sub !== null) it.sub = st.sub;
+          else if(it.sub && (SUBCATS[st.cat]||[]).indexOf(it.sub) < 0) it.sub = '';
+          if(/^待分类/.test(it.name) || !it.name) it.name = (it.color||'') + (it.sub||st.cat);
+        }
+        if(st.season) it.season = st.season.slice();
+        if(st.scene) it.scene = st.scene.slice();
+        if(st.wear){ it.wear = st.wear; if(st.wear==='常穿') it.reason=''; else if(!it.reason) it.reason = REASONS[0]; }
+        if(st.locSet) it.locId = st.locId || '';
         if(isHome) it.scene = ['家居'];
       });
       save(); closeSheet(); renderAll();
-      toast('已分类 '+ids.length+' 件');
+      toast('已处理 '+ids.length+' 件');
       if(after) after();
     };
     sheet.appendChild(cta);
