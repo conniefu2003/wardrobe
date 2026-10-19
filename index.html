@@ -269,6 +269,7 @@
     </div>
     <div class="frow" style="margin-top:14px">
       <button class="chip" id="chipBatch">批量：收进位置 / 标记频率</button>
+      <button class="chip" id="chipDup">查重复照片</button>
     </div>
     <div id="gridStat" class="hint" style="margin:8px 2px 0"></div>
     <div id="gridWrap"></div>
@@ -319,6 +320,7 @@
   <button class="mini" id="bToLoc">收进位置</button>
   <button class="mini" id="bOutLoc">拿出来</button>
   <button class="mini" id="bWearNever">标记从未穿</button>
+  <button class="mini" id="bDelete">删除</button>
   <button class="mini ghost" id="bCancel">取消</button>
 </div>
 
@@ -1459,8 +1461,17 @@ function openItem(id, jumpPair){
   const acts = el('div','outfit-actions'); acts.style.marginTop='6px';
   const bPair = el('button','mini on','和它配什么');
   const bName = el('button','mini ghost','改名');
+  const bDel2 = el('button','mini ghost','删除这件');
+  bDel2.style.color = 'var(--warn)';
+  bDel2.style.borderColor = '#f0d9cf';
+  bDel2.onclick = ()=>{
+    if(!confirm('删掉「'+it.name+'」？删了不能恢复。')) return;
+    DB.items = DB.items.filter(x=>x.id!==it.id);
+    DB.saved = DB.saved.filter(s=>s.ids.every(id=>DB.items.some(x=>x.id===id)));
+    save(); closeSheet(); renderAll(); toast('已删除');
+  };
   bName.onclick = ()=>{ const n = prompt('叫什么？', it.name); if(n&&n.trim()){ it.name=n.trim(); save(); openItem(it.id, jumpPair);} };
-  acts.appendChild(bPair); acts.appendChild(bName);
+  acts.appendChild(bPair); acts.appendChild(bName); acts.appendChild(bDel2);
   sheet.appendChild(acts);
 
   const out = el('div'); sheet.appendChild(out);
@@ -1899,6 +1910,64 @@ document.getElementById('bWearNever').onclick = ()=>{
   DB.items.forEach(i=>{ if(sel.has(i.id)){ i.wear='从未穿'; if(!i.reason) i.reason=REASONS[0]; } });
   save(); exitSelect(); renderAll(); toast('已标记从未穿');
 };
+document.getElementById('bDelete').onclick = ()=>{
+  if(!sel.size){ toast('先选衣服'); return; }
+  if(!confirm('删掉选中的 '+sel.size+' 件？删了不能恢复。')) return;
+  const n = sel.size;
+  DB.items = DB.items.filter(i=>!sel.has(i.id));
+  DB.saved = DB.saved.filter(s=>s.ids.every(id=>DB.items.some(x=>x.id===id)));
+  save(); exitSelect(); renderAll(); toast('已删除 '+n+' 件');
+};
+document.getElementById('chipDup').onclick = openDupes;
+
+/* 查重：同一张照片进了多次 */
+function findDupes(){
+  const m = {};
+  DB.items.filter(i=>i.owner===DB.owner).forEach(i=>{
+    const k = (i.photo||'').slice(-600);
+    (m[k] = m[k] || []).push(i);
+  });
+  return Object.keys(m).filter(k=>m[k].length>1).map(k=>m[k]);
+}
+function openDupes(){
+  const groups = findDupes();
+  sheet.innerHTML=''; sheetHead('重复的照片');
+  if(!groups.length){
+    sheet.appendChild(el('div','empty','没发现重复：每张照片只进来了一次。'));
+    mask.classList.add('on'); return;
+  }
+  sheet.appendChild(el('div','why','下面每组是同一张照片进了多次。删掉多余的，留一张就行。'));
+  groups.forEach(g=>{
+    const c = el('div','card'); c.style.marginTop='12px'; c.style.overflow='hidden';
+    g.forEach((it,idx)=>{
+      const r = el('div','row');
+      r.innerHTML = '<div class="th"><img src="'+it.photo+'" alt=""></div>'
+        + '<div class="bd"><div class="t1">'+esc(it.name)+'</div>'
+        + '<div class="t2">'+esc(it.cat)+' · '+new Date(it.createdAt||Date.now()).toLocaleString('zh-CN')+'</div></div>';
+      if(idx===0){
+        r.appendChild(el('span','sub','保留'));
+      }else{
+        const b = el('button','mini','删这件');
+        b.onclick = ()=>{
+          DB.items = DB.items.filter(x=>x.id!==it.id);
+          save(); closeSheet(); renderAll(); toast('已删除 1 件');
+        };
+        r.appendChild(b);
+      }
+      c.appendChild(r);
+    });
+    const keep = el('button','mini on','只留第一张，删掉其余 '+(g.length-1)+' 张');
+    keep.style.margin='10px 14px 14px';
+    keep.onclick = ()=>{
+      const keepId = g[0].id;
+      DB.items = DB.items.filter(x=> x.id===keepId || !g.some(y=>y.id===x.id));
+      save(); closeSheet(); renderAll(); toast('已清掉 '+(g.length-1)+' 张重复');
+    };
+    c.appendChild(keep);
+    sheet.appendChild(c);
+  });
+  mask.classList.add('on');
+}
 function openLocPick(cb){
   sheet.innerHTML=''; sheetHead('收进哪个位置');
   const locs = DB.locations.filter(l=>!l.owner || l.owner===DB.owner);
