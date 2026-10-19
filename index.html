@@ -227,6 +227,11 @@
   #quickbar .qt{font-size:13px;color:var(--ink);flex:1;line-height:1.35}
   #quickbar .qt small{display:block;color:var(--sub);font-size:11.5px}
   #printArea{display:none}
+  #lightbox{position:fixed;inset:0;z-index:80;background:rgba(20,18,16,.92);display:none;
+    align-items:center;justify-content:center;padding:16px;cursor:zoom-out}
+  #lightbox.on{display:flex}
+  #lightbox img{max-width:94vw;max-height:88vh;border-radius:12px;object-fit:contain;background:#111}
+  #lightbox .tip{position:absolute;bottom:26px;left:0;right:0;text-align:center;color:#ddd;font-size:13px}
   @media print{
     body{background:#fff;padding:0}
     header,main,#fabWrap,#batchbar,.mask,.toast,#quickbar,#dropzone{display:none !important}
@@ -360,6 +365,7 @@
 <input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
 <input type="file" id="fileAlbum" accept="image/*" multiple hidden>
 <input type="file" id="fileImport" accept="application/json,.json" hidden>
+<div id="lightbox"><img id="lbImg" alt=""><div class="tip">点任意处关闭</div></div>
 <div class="toast" id="toast"></div>
 <div class="mask" id="mask"><div class="sheet" id="sheet"></div></div>
 
@@ -419,25 +425,23 @@ function nextNo(owner){
   return p + '-' + String(mx+1).padStart(3,'0');
 }
 const SLEEVE_CATS = ['上装','连衣裙','外套','套装'];
-const SEASONS = ['春秋','夏','冬'];
+const SEASONS = ['春','夏','秋','冬'];
 const OWNERS = [['connie','Connie衣橱'],['daniel','Daniel衣橱'],['kevin','Kevin衣橱'],['home','床品']];
 const WEARS = ['常穿','偶尔穿','从未穿'];
 const SCENES = ['正装','通勤','休闲','运动','家居'];
 /* 换季时间点：一年四次，按需改 */
 const SWAPS = [
-  {m:3,  d:10, from:'冬',   to:'春秋', label:'3月上旬'},
-  {m:5,  d:5,  from:'春秋', to:'夏',   label:'5月上旬'},
-  {m:9,  d:25, from:'夏',   to:'春秋', label:'9月下旬'},
-  {m:11, d:15, from:'春秋', to:'冬',   label:'11月中旬'}
+  {m:3,  d:10, from:'冬', to:'春', label:'3月上旬'},
+  {m:5,  d:5,  from:'春', to:'夏', label:'5月上旬'},
+  {m:9,  d:25, from:'夏', to:'秋', label:'9月下旬'},
+  {m:11, d:15, from:'秋', to:'冬', label:'11月中旬'}
 ];
 /* 从位置名里读出它装的是哪一季（B01·夏装 → 夏） */
-const SEASON_PACK = {'春秋':'春秋装','夏':'夏装','冬':'冬装'};
+const SEASON_PACK = {'春':'春装','夏':'夏装','秋':'秋装','冬':'冬装'};
 function boxSeasonOf(l){
   if(!l) return null;
   const d = (l.detail||'') + ' ' + (l.code||'');
   for(const k in SEASON_PACK){ if(d.indexOf(SEASON_PACK[k]) >= 0) return k; }
-  if(d.indexOf('冬') >= 0) return '冬';
-  if(d.indexOf('夏') >= 0) return '夏';
   return null;
 }
 const REASONS = ['不知道怎么搭','穿了不舒服','尺码不合','没场合穿','忘了有','旧了起球'];
@@ -551,7 +555,8 @@ function seasonByMonth(){
   const m = new Date().getMonth()+1;
   if(m>=6&&m<=8) return '夏';
   if(m===12||m<=2) return '冬';
-  return '春秋';
+  if(m>=9&&m<=11) return '秋';
+  return '春';
 }
 function migrate(){
   DB.items = DB.items || []; DB.saved = DB.saved || [];
@@ -569,7 +574,6 @@ function migrate(){
     });
     DB.boxes = null;
   }
-  const smap = {'春':'春秋','秋':'春秋','夏':'夏','冬':'冬'};
   const omap = {'我':'connie','先生':'daniel','Kevin':'kevin','家':'home','connie':'connie','daniel':'daniel','kevin':'kevin','home':'home'};
   DB.items.forEach(it=>{
     it.owner = omap[it.owner] || 'connie';
@@ -579,11 +583,15 @@ function migrate(){
       it.cat = target || '上装';
     }
     let s = Array.isArray(it.season) ? it.season.slice() : [];
-    if(s.includes('四季')) s = ['春秋','夏','冬'];
-    s = s.map(x=>smap[x]||x).filter(x=>SEASONS.includes(x));
-    it.season = s.length ? [...new Set(s)] : ['春秋','夏','冬'];
+    const flat = [];
+    s.forEach(function(x){
+      if(x==='四季'){ flat.push('春','夏','秋','冬'); }
+      else if(x==='春秋'){ flat.push('春','秋'); }
+      else if(SEASONS.indexOf(x) >= 0){ flat.push(x); }
+    });
+    it.season = [...new Set(flat)];
     const wmap = {'常穿':'常穿','偶尔':'偶尔穿','偶尔穿':'偶尔穿','没穿':'从未穿','从未穿':'从未穿'};
-    it.wear = wmap[it.wear] || '常穿';
+    it.wear = wmap[it.wear] || '';
     if(it.box && !it.locId) it.locId = it.box;
     delete it.box;
     if(!it.locId) it.locId = '';
@@ -1052,7 +1060,7 @@ function pendingLists(all){
   const mine = all ? DB.items.slice() : DB.items.filter(i=>i.owner===DB.owner);
   const noCat = mine.filter(i=>i.cat==='待分类');
   const noInfo = mine.filter(i=> i.cat!=='待分类' &&
-    (!(i.season||[]).length || !(i.scene||[]).length || !i.locId));
+    (!(i.season||[]).length || !(i.scene||[]).length || !i.wear || !i.locId));
   return {noCat, noInfo};
 }
 function renderPending(){
@@ -1273,7 +1281,8 @@ function buildCart(title, list){
     const cb = el('div','cbox'+(on?' on':''), on?'✓':'');
     cb.onclick = (ev)=>{ ev.stopPropagation(); on?sel.delete(it.id):sel.add(it.id); syncBatchBar(); cartRefresh(); };
     const img = el('img'); img.src = it.photo; img.alt='';
-    img.onclick = ()=> openItem(it.id);
+    img.style.cursor = 'zoom-in';
+    img.onclick = (ev)=>{ ev.stopPropagation(); openPhoto(it.photo); };
     const info = el('div','cinfo');
     info.onclick = ()=> openItem(it.id);
     const l = locOf(it);
@@ -1285,6 +1294,7 @@ function buildCart(title, list){
     if(it.cat==='待分类') miss.push('缺品类');
     if(!(it.season||[]).length) miss.push('缺季节');
     if(!(it.scene||[]).length) miss.push('缺场合');
+    if(!it.wear) miss.push('缺频率');
     if(!it.locId) miss.push('缺位置');
     info.innerHTML = '<div class="cname">'+(it.no? '<span style="color:var(--accent);font-size:12px;margin-right:6px">'+esc(it.no)+'</span>':'')+esc(it.name)+'</div>'
       + '<div class="cmeta">'+esc(line1||'还没填品类')+'</div>'
@@ -1460,7 +1470,7 @@ function renderSeasonPlan(){
 function renderLists(){ renderUnworn(); renderGaps(); renderLocs(); }
 function renderUnworn(){
   const wrap = document.getElementById('unwornWrap'); wrap.innerHTML='';
-  const un = DB.items.filter(i=>i.owner===DB.owner && i.wear!=='常穿');
+  const un = DB.items.filter(i=>i.owner===DB.owner && (i.wear==='从未穿' || i.wear==='偶尔穿'));
   document.getElementById('cUnworn').textContent = un.length;
   document.getElementById('cUnworn').className = 'cnt'+(un.length?' warn':' zero');
   if(!un.length){ wrap.appendChild(emptyCard('暂时没有买了没穿的','衣橱干净，继续保持。')); return; }
@@ -1586,6 +1596,19 @@ function armDelete(it, btn){
   }, 3500);
 }
 
+/* 看大图 */
+function openPhoto(src){
+  const lb = document.getElementById('lightbox');
+  const im = document.getElementById('lbImg');
+  if(!lb || !im || !src) return;
+  im.src = src;
+  lb.classList.add('on');
+}
+(function(){
+  const lb = document.getElementById('lightbox');
+  if(lb) lb.onclick = function(){ lb.classList.remove('on'); };
+})();
+
 /* ================= 单件详情 ================= */
 function openItem(id, jumpPair){
   const it = DB.items.find(x=>x.id===id);
@@ -1594,7 +1617,8 @@ function openItem(id, jumpPair){
   sheetHead((it.no? it.no+' · ':'') + it.name, {onDelete: function(){ armDelete(it, this); }});
 
   const f = el('div','field');
-  f.innerHTML = '<div class="pick" style="aspect-ratio:4/5;cursor:default"><img src="'+it.photo+'" alt=""></div>';
+  f.innerHTML = '<div class="pick" style="aspect-ratio:4/5;cursor:zoom-in"><img src="'+it.photo+'" alt=""></div>';
+  f.firstChild.onclick = function(){ openPhoto(it.photo); };
   sheet.appendChild(f);
 
   const info = el('div','why');
@@ -1964,7 +1988,7 @@ let draft = null;
 function openAdd(){
   draft = {id:uid(), photo:null, name:'', owner:DB.owner, cat:(DB.owner==='home'?'床品':'上装'), sub:'', sleeve:'', material:'',
            color:'', hex:'#cccccc', desc:'', size:'', boughtAt:'', pair:'', retiredAt:'',
-           season:[curSeason||seasonByMonth()], scene:(DB.owner==='home'?['家居']:['通勤','休闲']), wear:'常穿', locId:''};
+           season:[], scene:[], wear:'', locId:''};
   renderAddSheet();
 }
 function renderAddSheet(){
@@ -2097,9 +2121,9 @@ function commitDraft(){
     desc: draft.desc||'', size: draft.size||'',
     boughtAt: draft.boughtAt||'', pair: draft.pair||'', retiredAt: '',
     color: draft.color||'灰', hex: draft.hex||'#9b9b9b',
-    season: draft.season.length? draft.season : ['春秋','夏','冬'],
-    scene: (draft.scene&&draft.scene.length)? draft.scene : ['休闲'],
-    wear: draft.wear, reason: draft.wear!=='常穿'? REASONS[0] : '',
+    season: draft.season || [],
+    scene: draft.scene || [],
+    wear: draft.wear || '', reason: draft.wear && draft.wear!=='常穿'? REASONS[0] : '',
     locId: draft.locId||'', status:'在穿', createdAt: Date.now()
   });
   save(); closeSheet(); renderAll(); toast('存好了 · '+name);
@@ -2120,8 +2144,8 @@ function pushItem(dataURL, col){
     no: nextNo(DB.owner),
     cat: '待分类', sub: '', sleeve: '', material: '', desc: '',
     color: (col&&col.name)||'灰', hex: (col&&col.hex)||'#9b9b9b',
-    season: [], scene: ['通勤','休闲'],
-    wear: '常穿', reason: '', locId: '', status:'在穿', createdAt: Date.now()
+    season: [], scene: [],
+    wear: '', reason: '', locId: '', status:'在穿', createdAt: Date.now()
   });
 }
 function goPending(){ view.cat='待分类'; view.season='全部'; view.wear='全部'; view.loc='全部'; showTab('wardrobe'); }
