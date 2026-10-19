@@ -430,6 +430,16 @@ const SWAPS = [
   {m:9,  d:25, from:'夏',   to:'春秋', label:'9月下旬'},
   {m:11, d:15, from:'春秋', to:'冬',   label:'11月中旬'}
 ];
+/* 从位置名里读出它装的是哪一季（B01·夏装 → 夏） */
+const SEASON_PACK = {'春秋':'春秋装','夏':'夏装','冬':'冬装'};
+function boxSeasonOf(l){
+  if(!l) return null;
+  const d = (l.detail||'') + ' ' + (l.code||'');
+  for(const k in SEASON_PACK){ if(d.indexOf(SEASON_PACK[k]) >= 0) return k; }
+  if(d.indexOf('冬') >= 0) return '冬';
+  if(d.indexOf('夏') >= 0) return '夏';
+  return null;
+}
 const REASONS = ['不知道怎么搭','穿了不舒服','尺码不合','没场合穿','忘了有','旧了起球'];
 const REASON_TIP = {
   '不知道怎么搭':'点「配它」，让衣橱给你出三套',
@@ -1328,9 +1338,21 @@ function renderSeasonPlan(){
     wrap.appendChild(emptyCard('衣橱还是空的','先加几件衣服，换季清单才有东西可算。'));
     return;
   }
-  const takeOut = list.filter(i=>(i.season||[]).includes(curSeason) && isStored(i));
+  // 季节与箱子不一致的，先挑出来
+  const CONFLICT = list.filter(function(it){
+    if(!isStored(it)) return false;
+    const l = locOf(it);
+    const bs = boxSeasonOf(l);
+    if(!bs) return false;
+    return !(it.season||[]).length || it.season.indexOf(bs) < 0;
+  });
+  const conflicted = {};
+  CONFLICT.forEach(function(it){ conflicted[it.id] = 1; });
+
+  const takeOut = list.filter(i=>(i.season||[]).includes(curSeason) && isStored(i) && !conflicted[i.id]);
   const putAway = list.filter(i=>!(i.season||[]).includes(curSeason) && !isStored(i));
-  hint.textContent = '下面按「' + curSeason + '」算：要拿出 ' + takeOut.length + ' 件，要收起 ' + putAway.length + ' 件。';
+  hint.textContent = '下面按「' + curSeason + '」算：要拿出 ' + takeOut.length + ' 件，要收起 ' + putAway.length + ' 件'
+    + (CONFLICT.length? '，另有 '+CONFLICT.length+' 件季节和箱子对不上，先处理它们。' : '。');
 
   // 什么时候换
   const now = new Date();
@@ -1403,6 +1425,30 @@ function renderSeasonPlan(){
       wrap.appendChild(c);
     });
   };
+
+  if(CONFLICT.length){
+    const sec = el('div','sec');
+    sec.innerHTML = '<h2>季节和箱子对不上</h2><span class="cnt warn">'+CONFLICT.length+'</span><span class="sp"></span>';
+    wrap.appendChild(sec);
+    wrap.appendChild(el('div','hint','东西收在「夏装」这类箱子里，季节标签却含这个季节；按箱子改一下，换季清单才准。'));
+    const c = el('div','card'); c.style.marginBottom='12px'; c.style.overflow='hidden';
+    CONFLICT.forEach(function(it){
+      const l = locOf(it);
+      const bs = boxSeasonOf(l);
+      const r = el('div','row');
+      r.innerHTML = '<div class="th"><img src="'+it.photo+'" alt=""></div>'
+        + '<div class="bd"><div class="t1">'+esc(it.name)+'</div>'
+        + '<div class="t2">现在标的是「'+(it.season||[]).join('/')+'」，箱子是「'+esc(locText(l))+'」</div></div>';
+      const b = el('button','mini on','改成'+bs+'季');
+      b.onclick = function(){
+        it.season = [bs];
+        save(); renderSeasonPlan(); renderPending(); toast('已改成'+bs+'季');
+      };
+      r.appendChild(b);
+      c.appendChild(r);
+    });
+    wrap.appendChild(c);
+  }
 
   block('该拿出来', takeOut, '这些是'+curSeason+'季能穿的，现在还收在箱/柜/盒里。',
     takeOut.length? '<b>要开：</b>'+(storedText(takeOut)||'（没有收在箱柜里的）') : '');
@@ -2074,7 +2120,7 @@ function pushItem(dataURL, col){
     no: nextNo(DB.owner),
     cat: '待分类', sub: '', sleeve: '', material: '', desc: '',
     color: (col&&col.name)||'灰', hex: (col&&col.hex)||'#9b9b9b',
-    season: ['春秋','夏','冬'], scene: ['通勤','休闲'],
+    season: [], scene: ['通勤','休闲'],
     wear: '常穿', reason: '', locId: '', status:'在穿', createdAt: Date.now()
   });
 }
@@ -2584,7 +2630,10 @@ document.getElementById('btnPrint').onclick = ()=>{
     const d = el('div','pbox');
     d.innerHTML = '<h3>'+esc(locText(l))+'</h3>'
       + '<div class="pmeta">'+(LOC_LABEL[l.type]||'')+(l.detail?' · '+esc(l.detail):'')+' · '+inLoc.length+' 件 · '+ownerName(DB.owner)+'的衣橱</div>'
-      + '<div class="plist">'+ inLoc.map(i=>'<div>'+esc(i.name)+'（'+[i.cat,i.sub,i.material].filter(Boolean).join('·')+'）'+(i.desc?' '+esc(i.desc):'')+'</div>').join('') + '</div>';
+      + '<div class="plist">'+ inLoc.map(i=>'<div>'+esc(i.no? i.no+'  ':'')+esc(i.name)
+          +'（'+[i.cat,i.sub,i.material].filter(Boolean).join('·')+'）'
+          +((i.season||[]).length?' '+(i.season||[]).join('/'):'')
+          +(i.desc?' '+esc(i.desc):'')+'</div>').join('') + '</div>';
     area.appendChild(d);
   });
   window.print();
