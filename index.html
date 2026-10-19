@@ -1136,7 +1136,7 @@ function renderTable(){
   const seg = document.getElementById('tableSeg');
   if(seg){
     seg.innerHTML='';
-    ['全部','按季节','按场合'].forEach(mm=>{
+    ['全部','按品类','按季节','按场合'].forEach(mm=>{
       const b = el('button','chip'+(tableMode===mm?' on':''), mm);
       b.onclick = ()=>{ tableMode=mm; renderTable(); };
       seg.appendChild(b);
@@ -1161,9 +1161,17 @@ function renderTable(){
     return;
   }
   if(hint) hint.textContent = ownerName(DB.owner)+' · 共 '+items.length+' 件'
-    + (tableMode==='全部'? ' · 勾选后可批量分类或删除' : ' · 同一批字段，按类别拆开看');
+    + (tableMode==='全部'? ' · 勾选后可批量处理或删除' : ' · 按'+tableMode.replace('按','')+'拆开，每类可单独勾选处理');
   if(tableStyle==='表格'){
     if(tableMode==='全部'){ wrap.appendChild(buildTable(null, items)); return; }
+    if(tableMode==='按品类'){
+      CATS.forEach(c=>{
+        const sub = items.filter(i=>i.cat===c);
+        if(!sub.length) return;
+        wrap.appendChild(buildTable(c, sub));
+      });
+      return;
+    }
     if(tableMode==='按季节'){
       const used = SEASONS.filter(s=>items.some(i=>(i.season||[]).includes(s)));
       (used.length?used:SEASONS).forEach(s=>{
@@ -1180,6 +1188,14 @@ function renderTable(){
   // 购物车式清单
   wrap.appendChild(cartBar(items));
   if(tableMode==='全部'){ wrap.appendChild(buildCart(null, items)); return; }
+  if(tableMode==='按品类'){
+    CATS.forEach(c=>{
+      const sub = items.filter(i=>i.cat===c);
+      if(!sub.length) return;
+      wrap.appendChild(buildCart(c, sub));
+    });
+    return;
+  }
   if(tableMode==='按季节'){
     const used = SEASONS.filter(s=>items.some(i=>(i.season||[]).includes(s)));
     (used.length?used:SEASONS).forEach(s=>{
