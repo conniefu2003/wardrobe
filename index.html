@@ -1261,11 +1261,42 @@ function refreshTab(){
   else if(tab==='lists') renderLists();
 }
 mask.onclick = e=>{ if(e.target===mask) closeSheet(); };
-function sheetHead(title){
+function sheetHead(title, opts){
   const h = el('div','sheet-head');
   h.innerHTML = '<h3>'+esc(title)+'</h3>';
+  const right = el('div');
+  right.style.cssText = 'display:flex;gap:8px;align-items:center';
+  if(opts && opts.onDelete){
+    const d = el('button','x','删');
+    d.style.cssText = 'width:auto;padding:0 12px;color:var(--warn);background:#fff;border:1px solid #f0d9cf';
+    d.onclick = opts.onDelete;
+    right.appendChild(d);
+  }
   const x = el('button','x','✕'); x.onclick = closeSheet;
-  h.appendChild(x); sheet.appendChild(h);
+  right.appendChild(x);
+  h.appendChild(right); sheet.appendChild(h);
+}
+/* 删除：点一次变红，再点一次才删；不用浏览器弹窗 */
+function armDelete(it, btn){
+  if(!btn) return;
+  if(btn.dataset.armed === '1'){
+    DB.items = DB.items.filter(x=>x.id!==it.id);
+    DB.saved = DB.saved.filter(s=>s.ids.every(id=>DB.items.some(x=>x.id===id)));
+    save(); closeSheet(); renderAll(); toast('已删除 · '+it.name);
+    return;
+  }
+  btn.dataset.armed = '1';
+  btn._label = btn.textContent;
+  btn.textContent = '再点一次删除';
+  btn.style.background = '#fbeee8';
+  btn.style.borderColor = '#e8b9a6';
+  btn.style.color = '#b4552f';
+  setTimeout(function(){
+    if(btn && btn.dataset.armed==='1' && btn._label){
+      btn.dataset.armed='0'; btn.textContent = btn._label;
+      btn.style.background=''; btn.style.borderColor=''; btn.style.color='';
+    }
+  }, 3500);
 }
 
 /* ================= 单件详情 ================= */
@@ -1273,7 +1304,7 @@ function openItem(id, jumpPair){
   const it = DB.items.find(x=>x.id===id);
   if(!it) return;
   sheet.innerHTML='';
-  sheetHead(it.name);
+  sheetHead(it.name, {onDelete: function(){ armDelete(it, this); }});
 
   const f = el('div','field');
   f.innerHTML = '<div class="pick" style="aspect-ratio:4/5;cursor:default"><img src="'+it.photo+'" alt=""></div>';
@@ -1464,12 +1495,7 @@ function openItem(id, jumpPair){
   const bDel2 = el('button','mini ghost','删除这件');
   bDel2.style.color = 'var(--warn)';
   bDel2.style.borderColor = '#f0d9cf';
-  bDel2.onclick = ()=>{
-    if(!confirm('删掉「'+it.name+'」？删了不能恢复。')) return;
-    DB.items = DB.items.filter(x=>x.id!==it.id);
-    DB.saved = DB.saved.filter(s=>s.ids.every(id=>DB.items.some(x=>x.id===id)));
-    save(); closeSheet(); renderAll(); toast('已删除');
-  };
+  bDel2.onclick = ()=> armDelete(it, bDel2);
   bName.onclick = ()=>{ const n = prompt('叫什么？', it.name); if(n&&n.trim()){ it.name=n.trim(); save(); openItem(it.id, jumpPair);} };
   acts.appendChild(bPair); acts.appendChild(bName); acts.appendChild(bDel2);
   sheet.appendChild(acts);
@@ -1494,12 +1520,7 @@ function openItem(id, jumpPair){
 
   const del = el('button','cta danger','从衣橱删掉这件');
   del.style.marginTop='18px';
-  del.onclick = ()=>{
-    if(!confirm('删掉「'+it.name+'」？')) return;
-    DB.items = DB.items.filter(x=>x.id!==it.id);
-    DB.saved = DB.saved.filter(s=>s.ids.every(i=>DB.items.some(x=>x.id===i)));
-    save(); closeSheet(); renderAll(); toast('已删除');
-  };
+  del.onclick = ()=> armDelete(it, del);
   sheet.appendChild(del);
   mask.classList.add('on');
 }
