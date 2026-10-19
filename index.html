@@ -30,10 +30,11 @@
   .icon-btn{border:1px solid var(--line);background:#fff;color:var(--sub);border-radius:12px;
     padding:7px 11px;font-size:13px;cursor:pointer;font-family:inherit}
   .icon-btn:hover{color:var(--ink);border-color:#d8d2c6}
-  .who{max-width:1000px;margin:0 auto;padding:0 18px 10px;display:flex;gap:8px}
-  .who button{flex:1;border:1px solid var(--line);background:#fff;color:var(--sub);border-radius:12px;
-    padding:9px 0;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+  .who{max-width:1000px;margin:0 auto;padding:0 18px 10px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .who button{border:1px solid var(--line);background:#fff;color:var(--sub);border-radius:12px;
+    padding:9px 0;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
   .who button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .who button:last-child{grid-column:1 / -1}
   nav.tabs{max-width:1000px;margin:0 auto;padding:0 14px 11px;display:flex;gap:6px}
   nav.tabs button{flex:1;border:none;background:transparent;color:var(--sub);font-size:14px;
     padding:9px 0;border-radius:12px;cursor:pointer;font-weight:600;font-family:inherit;white-space:nowrap}
@@ -1020,8 +1021,9 @@ function renderGrid(){
 
 /* ================= 渲染：新进待处理 ================= */
 let cartRefresh = function(){ renderTable(); };
-function pendingLists(){
-  const mine = DB.items.filter(i=>i.owner===DB.owner);
+let pendingAll = false;
+function pendingLists(all){
+  const mine = all ? DB.items.slice() : DB.items.filter(i=>i.owner===DB.owner);
   const noCat = mine.filter(i=>i.cat==='待分类');
   const noInfo = mine.filter(i=> i.cat!=='待分类' &&
     (!(i.season||[]).length || !(i.scene||[]).length || !i.locId));
@@ -1032,11 +1034,12 @@ function renderPending(){
   const wrap = document.getElementById('pendingWrap'); if(!wrap) return;
   wrap.innerHTML='';
   const hint = document.getElementById('pendingHint');
-  const {noCat, noInfo} = pendingLists();
+  const {noCat, noInfo} = pendingLists(pendingAll);
   const total = noCat.length + noInfo.length;
+  const who = pendingAll ? '全部人' : ownerName(DB.owner);
   if(hint) hint.textContent = total
-    ? ownerName(DB.owner)+' · 有 '+total+' 件还没处理完：没分类 '+noCat.length+' 件，资料不全 '+noInfo.length+' 件。'
-    : ownerName(DB.owner)+' · 没有待处理的，都整理好了。';
+    ? who+' · 有 '+total+' 件还没处理完：没分类 '+noCat.length+' 件，资料不全 '+noInfo.length+' 件。'
+    : who+' · 没有待处理的，都整理好了。';
   if(!total){
     wrap.appendChild(emptyCard('新进队列是空的','拍完照会自动落到这里，处理完就消失。'));
     return;
@@ -2377,12 +2380,11 @@ function renderOwnerBox(){
   const box = document.getElementById('whoBox');
   if(!box) return;
   box.innerHTML='';
-  const labels = {};
-  OWNERS.forEach(function(x){ labels[x[0]] = x[1]; });
   OWNERS.forEach(function(x){
-    const b = el('button', DB.owner===x[0] ? 'on':'', x[1]);
+    const b = el('button', (DB.owner===x[0] && !pendingAll) ? 'on':'', x[1]);
     b.dataset.owner = x[0];
     b.onclick = function(){
+      pendingAll = false;
       DB.owner = x[0]; save();
       view = {season:'全部', wear:'全部', loc:'全部', cat:'全部', sub:'全部', sleeve:'全部', mat:'全部'};
       searchQ='';
@@ -2391,6 +2393,14 @@ function renderOwnerBox(){
     };
     box.appendChild(b);
   });
+  const pb = el('button', pendingAll ? 'on':'', '新进待处理');
+  pb.dataset.owner = '__pending__';
+  pb.onclick = function(){
+    pendingAll = true;
+    renderAll();
+    showTab('pending');
+  };
+  box.appendChild(pb);
 }
 document.querySelectorAll('nav.tabs button').forEach(b=>{
   b.onclick = ()=> showTab(b.dataset.tab);
