@@ -388,6 +388,13 @@ const SEASONS = ['春秋','夏','冬'];
 const OWNERS = [['我','我的衣橱'],['先生','先生的衣橱'],['Kevin','Kevin的衣橱'],['家','家里的床品']];
 const WEARS = ['常穿','偶尔穿','从未穿'];
 const SCENES = ['正装','通勤','休闲','运动','家居'];
+/* 换季时间点：一年四次，按需改 */
+const SWAPS = [
+  {m:3,  d:10, from:'冬',   to:'春秋', label:'3月上旬'},
+  {m:5,  d:5,  from:'春秋', to:'夏',   label:'5月上旬'},
+  {m:9,  d:25, from:'夏',   to:'春秋', label:'9月下旬'},
+  {m:11, d:15, from:'春秋', to:'冬',   label:'11月中旬'}
+];
 const REASONS = ['不知道怎么搭','穿了不舒服','尺码不合','没场合穿','忘了有','旧了起球'];
 const REASON_TIP = {
   '不知道怎么搭':'点「配它」，让衣橱给你出三套',
@@ -1082,15 +1089,55 @@ function renderSeasonPlan(){
   }
   const takeOut = list.filter(i=>(i.season||[]).includes(curSeason) && isStored(i));
   const putAway = list.filter(i=>!(i.season||[]).includes(curSeason) && !isStored(i));
-  hint.textContent = DB.owner + ' · ' + curSeason + '季：要拿出 ' + takeOut.length + ' 件，要收起 ' + putAway.length + ' 件';
+  hint.textContent = '下面按「' + curSeason + '」算：要拿出 ' + takeOut.length + ' 件，要收起 ' + putAway.length + ' 件。';
 
-  const block = (title, arr, tip) => {
+  // 什么时候换
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let nxt = null;
+  [now.getFullYear(), now.getFullYear()+1].forEach(function(y){
+    SWAPS.forEach(function(s){
+      const dt = new Date(y, s.m-1, s.d);
+      if(dt >= today && (!nxt || dt < nxt.dt)) nxt = {label:s.label, from:s.from, to:s.to, dt:dt};
+    });
+  });
+  const info = el('div','card');
+  info.style.cssText = 'padding:16px;margin-bottom:12px';
+  let ih = '<div style="font-size:12px;color:var(--sub);letter-spacing:1px">换季时间</div>'
+    + '<div style="font-size:17px;font-weight:700;margin-top:6px">现在是 <span style="color:var(--accent)">'
+    + seasonByMonth() + '</span> 季（' + (now.getMonth()+1) + '月）</div>';
+  if(nxt){
+    const dd = Math.round((nxt.dt - today)/86400000);
+    ih += '<div style="margin-top:8px;font-size:14px">下一次：<b>' + nxt.label + '</b>（'
+      + (nxt.dt.getMonth()+1) + '月' + nxt.dt.getDate() + '日）· 还有 <b>' + dd + '</b> 天</div>'
+      + '<div class="sub" style="margin-top:4px">那天要做：把「' + nxt.from + '」收起来，把「' + nxt.to + '」拿出来。</div>';
+  }
+  ih += '<table style="width:100%;font-size:13px;border-collapse:collapse;margin-top:12px">'
+    + SWAPS.map(function(s){
+        return '<tr><td style="padding:4px 0;color:var(--sub);width:90px">'+s.label+'</td><td>'+s.from+' → <b>'+s.to+'</b></td></tr>';
+      }).join('')
+    + '</table>'
+    + '<div class="sub" style="margin-top:8px">北方提前两周、南方推后两三周；看连续一周最低温，不看日历。</div>';
+  info.innerHTML = ih;
+  wrap.appendChild(info);
+
+  const storedText = (arr) => {
+    const m = {};
+    arr.forEach(function(i){
+      const l = locOf(i);
+      if(l && STORED_TYPES.includes(l.type)) m[locText(l)] = (m[locText(l)]||0)+1;
+    });
+    return Object.keys(m).sort().map(function(k){ return k+'（'+m[k]+'件）'; }).join('、');
+  };
+
+  const block = (title, arr, tip, extra) => {
     const sec = el('div','sec');
     sec.innerHTML = '<h2>'+title+'</h2><span class="cnt'+(arr.length?'':' zero')+'">'+arr.length+'</span><span class="sp"></span>';
     wrap.appendChild(sec);
     const p = el('div','hint'); p.style.margin='-4px 2px 10px'; p.textContent = tip;
     wrap.appendChild(p);
-    if(!arr.length){ wrap.appendChild(el('div','card','').appendChild(el('div','empty','没有要动的')) ); return; }
+    if(extra){ const e2 = el('div','why'); e2.style.marginBottom='10px'; e2.innerHTML = extra; wrap.appendChild(e2); }
+    if(!arr.length){ const c0 = el('div','card'); c0.appendChild(el('div','empty','这一步没有要动的')); wrap.appendChild(c0); return; }
     // 按位置分组
     const groups = {};
     arr.forEach(i=>{
@@ -1116,8 +1163,10 @@ function renderSeasonPlan(){
     });
   };
 
-  block('该拿出来', takeOut, '这些是'+curSeason+'季能穿的，现在还收在箱/柜/盒里，该拿出来了。');
-  block('该收起来', putAway, '这些不是'+curSeason+'季穿的，现在还在外面，收进箱/柜/盒。');
+  block('该拿出来', takeOut, '这些是'+curSeason+'季能穿的，现在还收在箱/柜/盒里。',
+    takeOut.length? '<b>要开：</b>'+(storedText(takeOut)||'（没有收在箱柜里的）') : '');
+  block('该收起来', putAway, '这些不是'+curSeason+'季穿的，现在还在外面，收进箱/柜/盒。',
+    putAway.length? '<b>要收进：</b>'+(storedText(putAway)||'还没有合适的位置，先在「清单」里建一只箱') : '');
 }
 
 /* ================= 渲染：清单 ================= */
