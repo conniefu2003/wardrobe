@@ -403,10 +403,10 @@ const REASON_TIP = {
   '忘了有':'挪到看得见的位置',
   '旧了起球':'直接出掉'
 };
-const LOC_TYPES = ['箱','柜','盒','区'];
-const LOC_LABEL = {'箱':'收纳箱','柜':'收纳柜','盒':'收纳盒','区':'专区'};
+const LOC_TYPES = ['箱','盒','抽','柜'];
+const LOC_LABEL = {'箱':'收纳箱','盒':'收纳盒','抽':'收纳抽屉柜','柜':'短衣柜'};
 const ZONES = ['上装区','裤装区','连衣裙区','大衣区','鞋区','包区','配饰区','睡衣区'];
-const STORED_TYPES = ['箱','柜','盒'];
+const STORED_TYPES = ['箱','盒','抽','柜'];
 const COLORS = [
   {n:'黑',h:'#1c1c1e'},{n:'白',h:'#f4f2ee'},{n:'灰',h:'#9b9b9b'},{n:'米',h:'#ded2bb'},
   {n:'棕',h:'#8b5e3c'},{n:'红',h:'#b03a3a'},{n:'橙',h:'#d08437'},{n:'黄',h:'#d3c04a'},
@@ -510,6 +510,10 @@ function seasonByMonth(){
 function migrate(){
   DB.items = DB.items || []; DB.saved = DB.saved || [];
   DB.locations = DB.locations || []; DB.gaps = DB.gaps || [];
+  DB.locations.forEach(function(l){
+    if(l.type === '区'){ l.type = '柜'; }
+    if(['箱','盒','抽','柜'].indexOf(l.type) < 0){ l.type = '箱'; }
+  });
   // 旧 boxes → locations
   if(DB.boxes && DB.boxes.length){
     DB.boxes.forEach(b=>{
@@ -1585,59 +1589,51 @@ function openLocForm(cb, edit){
     f1.appendChild(c1); sheet.appendChild(f1);
 
     const f2 = el('div','field');
-    if(type==='区'){
-      f2.appendChild(el('div','lab','哪个区'));
-      const c2 = el('div','chips');
-      ZONES.forEach(z=>{
-        const b = el('button','chip'+(code===z?' on':''), z);
-        b.onclick = ()=>{ code=z; draw(); };
-        c2.appendChild(b);
-      });
-      f2.appendChild(c2); sheet.appendChild(f2);
-    }else{
-      f2.appendChild(el('div','lab', type==='箱'?'箱子编号（B01…）': type==='柜'?'柜号（如 2 号柜）':'盒子编号（H01…）'));
-      const ip = el('input'); ip.type='text'; ip.value = code;
-      ip.placeholder = type==='箱'?'B01': type==='柜'?'柜2':'H01';
-      ip.oninput = e=> code = e.target.value;
-      f2.appendChild(ip); sheet.appendChild(f2);
+    const codeLab = type==='箱' ? '箱子编号（B01…）'
+                  : type==='盒' ? '盒子编号（H01…）'
+                  : type==='抽' ? '抽屉柜编号（D1…）' : '短衣柜编号（G1…）';
+    f2.appendChild(el('div','lab', codeLab));
+    const ip = el('input'); ip.type='text'; ip.value = code;
+    ip.placeholder = type==='箱' ? 'B01' : type==='盒' ? 'H01' : type==='抽' ? 'D1' : 'G1';
+    ip.oninput = e=> code = e.target.value;
+    f2.appendChild(ip); sheet.appendChild(f2);
 
-      if(type==='柜'){
-        const f3 = el('div','field');
-        f3.appendChild(el('div','lab','第几层'));
-        const c3 = el('div','chips');
-        ['1','2','3','4','5','6'].forEach(n=>{
-          const b = el('button','chip'+(detail.indexOf(n+'层')===0?' on':''), n+'层');
-          b.onclick = ()=>{ const side = (detail.split(/[层]/)[1]||''); detail = n+'层'+side; draw(); };
-          c3.appendChild(b);
-        });
-        f3.appendChild(c3);
-        const lab2 = el('div','lab','哪一边'); lab2.style.marginTop='14px';
-        f3.appendChild(lab2);
-        const c4 = el('div','chips');
-        ['左','中','右'].forEach(s=>{
-          const b = el('button','chip'+(detail.endsWith(s)?' on':''), s);
-          b.onclick = ()=>{ const f = (detail.match(/^\d层/)||[''])[0]; detail = f+s; draw(); };
-          c4.appendChild(b);
-        });
-        f3.appendChild(c4);
-        sheet.appendChild(f3);
-      }else{
-        const f3 = el('div','field');
-        f3.appendChild(el('div','lab','里面装什么类别（可空）'));
-        const c3 = el('div','chips');
-        ['冬装','春秋装','夏装','鞋','包','配饰','床品'].forEach(k=>{
-          const b = el('button','chip'+(detail===k?' on':''), k);
-          b.onclick = ()=>{ detail = detail===k?'':k; draw(); };
-          c3.appendChild(b);
-        });
-        f3.appendChild(c3); sheet.appendChild(f3);
-      }
+    const f3 = el('div','field');
+    if(type==='抽'){
+      f3.appendChild(el('div','lab','第几屉'));
+      const c3 = el('div','chips');
+      ['1','2','3','4','5','6'].forEach(n=>{
+        const k = n+'屉';
+        const b = el('button','chip'+(detail===k?' on':''), k);
+        b.onclick = ()=>{ detail = detail===k?'':k; draw(); };
+        c3.appendChild(b);
+      });
+      f3.appendChild(c3);
+    }else if(type==='柜'){
+      f3.appendChild(el('div','lab','挂在哪一区'));
+      const c4 = el('div','chips');
+      ['挂杆','上层','下层','顶层','抽屉'].forEach(k=>{
+        const b = el('button','chip'+(detail===k?' on':''), k);
+        b.onclick = ()=>{ detail = detail===k?'':k; draw(); };
+        c4.appendChild(b);
+      });
+      f3.appendChild(c4);
+    }else{
+      f3.appendChild(el('div','lab','里面装什么（可空）'));
+      const c3 = el('div','chips');
+      ['冬装','春秋装','夏装','鞋','包','围巾帽子腰带','床品'].forEach(k=>{
+        const b = el('button','chip'+(detail===k?' on':''), k);
+        b.onclick = ()=>{ detail = detail===k?'':k; draw(); };
+        c3.appendChild(b);
+      });
+      f3.appendChild(c3);
     }
+    sheet.appendChild(f3);
 
     const f4 = el('div','field');
     f4.appendChild(el('div','lab','属于谁'));
     const c5 = el('div','chips');
-    [['','共用'],['connie','Connie'],['daniel','Daniel'],['kevin','Kevin'],['home','家里']].forEach(([v,label])=>{
+    [['','共用'],['connie','Connie衣橱'],['daniel','Daniel衣橱'],['kevin','Kevin衣橱'],['home','床品']].forEach(([v,label])=>{
       const b = el('button','chip'+(l.owner===v?' on':''), label);
       b.onclick = ()=>{ l.owner=v; draw(); };
       c5.appendChild(b);
