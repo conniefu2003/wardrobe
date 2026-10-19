@@ -119,6 +119,12 @@
     font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;
     box-shadow:0 8px 24px rgba(63,91,74,.32)}
   #fab:hover{filter:brightness(1.08)}
+  #tipbar{display:flex;gap:8px;align-items:center;margin:0 0 14px;
+    background:#fffdf8;border:1px solid #efe0cf;border-radius:14px;padding:10px 12px;font-size:12.5px;
+    color:#6b5b4a;line-height:1.4}
+  #tipbar b{flex:0 0 auto;color:#8a5a3b}
+  #tipbar span{flex:1}
+  #tipbar.hide{display:none}
   .fab-mini{border:1px solid var(--line);background:#fff;color:var(--sub);border-radius:999px;
     padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit;box-shadow:var(--shadow)}
   .fab-mini:hover{color:var(--ink)}
@@ -163,6 +169,12 @@
   .swatch{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 11px 5px 7px;
     font-size:12.5px;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:inherit;color:var(--sub)}
   .swatch.on{border-color:var(--accent);color:var(--ink);background:var(--accent-soft)}
+  #dropzone{position:fixed;inset:10px;z-index:50;display:none;align-items:center;justify-content:center;
+    border:3px dashed var(--accent);border-radius:24px;background:rgba(247,245,241,.86);pointer-events:none}
+  #dropzone.on{display:flex}
+  #dropzone div{text-align:center;color:var(--accent)}
+  #dropzone b{display:block;font-size:20px;margin-bottom:6px}
+  #dropzone small{color:var(--sub);font-size:13px}
   .toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:#2b2823;color:#fff;
     padding:9px 16px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;transition:.25s;z-index:60}
   .toast.on{opacity:1}
@@ -170,7 +182,7 @@
   #printArea{display:none}
   @media print{
     body{background:#fff;padding:0}
-    header,main,#fabWrap,#batchbar,.mask,.toast,#quickbar{display:none !important}
+    header,main,#fabWrap,#batchbar,.mask,.toast,#quickbar,#dropzone{display:none !important}
     #printArea{display:block;padding:0}
     .pbox{page-break-after:always;padding:10mm}
     .pbox:last-child{page-break-after:auto}
@@ -216,6 +228,11 @@
   </section>
 
   <section id="tab-wardrobe" hidden>
+    <div id="tipbar">
+      <b>照片怎么进来</b>
+      <span id="tipText">微信里收到的图：长按 → 保存到相册 → 回这里点「从相册选」，可一次选多张。</span>
+      <button class="mini ghost" id="tipClose">知道了</button>
+    </div>
     <div class="chips" id="catChips"></div>
     <div class="chips" id="storeChips"></div>
     <div style="margin-top:10px">
@@ -246,10 +263,11 @@
 
 <div id="fabWrap">
   <button id="fabManual" class="fab-mini">手动加一件</button>
-  <button id="fabAlbum" class="fab-mini">相册多选</button>
-  <button id="fab">📷 拍照入库</button>
+  <button id="fabAlbum" class="fab-mini">从相册选</button>
+  <button id="fab">📷 拍照</button>
 </div>
 
+<div id="dropzone"><div><b>松手就存进衣橱</b><small>一次拖多张也行</small></div></div>
 <div id="quickbar">
   <img id="quickThumb" alt="">
   <div class="qt"><span id="quickMsg">已入库</span><small>先存着，品类回头点一下补</small></div>
@@ -329,8 +347,17 @@ function load(){
 }
 function save(){
   try{
-    localStorage.setItem(KEY, JSON.stringify({items:DB.items, saved:DB.saved, boxes:DB.boxes, gaps:DB.gaps, season:DB.season}));
-  }catch(e){ DB.memOnly = true; toast('本地空间满了，先「备份」再清理'); }
+    const payload = JSON.stringify({items:DB.items, saved:DB.saved, boxes:DB.boxes, gaps:DB.gaps, season:DB.season});
+    localStorage.setItem(KEY, payload);
+    const mb = payload.length / 1048576;
+    DB.lastSize = mb;
+    if(mb > 4 && !DB.warned){ DB.warned = true; toast('本地已用到 '+mb.toFixed(1)+'MB，快满了，建议先「备份」'); }
+  }catch(e){
+    DB.memOnly = true;
+    const mb = (DB.lastSize||0).toFixed(1);
+    toast('存不进去了：浏览器本地空间满了（约 '+mb+'MB）。先点「备份」导出，再删掉一些旧照片');
+    console.warn('save failed', e);
+  }
 }
 function seasonByMonth(){
   const m = new Date().getMonth()+1;
@@ -1171,31 +1198,25 @@ function nextUncatName(){ return '待分类 ' + (pendingCount()+1); }
 
 async function importFiles(files){
   const arr = Array.prototype.slice.call(files||[]).filter(f=> !f.type || /^image\//.test(f.type));
-  if(!arr.length) return;
+  if(!arr.length){ quickMsg('拖进来的不是图片','支持 jpg / png / webp'); return; }
   const qb = document.getElementById('quickbar');
   qb.classList.add('on');
-  const msg = document.getElementById('quickMsg');
   let ok = 0, bad = 0;
   for(let i=0;i<arr.length;i++){
-    msg.innerHTML = '正在处理 ' + (i+1) + '/' + arr.length + '…';
+    quickMsg('正在处理 ' + (i+1) + '/' + arr.length + '…','');
     try{
-      const {dataURL, img} = await compress(arr[i]);
-      const col = dominantColor(img);
-      DB.items.unshift({
-        id: uid(), photo: dataURL, name: nextUncatName(), cat: '待分类', sub: '',
-        color: col.name, hex: col.hex, season: [seasonByMonth()], scene: ['通勤','休闲'],
-        wear: '常穿', reason: '', box: '', status: '在穿', createdAt: Date.now()
-      });
-      document.getElementById('quickThumb').src = dataURL;
+      const r = await compress(arr[i]);
+      pushItem(r.dataURL, dominantColor(r.img));
+      document.getElementById('quickThumb').src = r.dataURL;
       ok++;
-    }catch(e){ bad++; console.warn(e); }
+    }catch(e){ bad++; console.warn('读图失败', e); }
   }
-  save();
-  msg.innerHTML = '入库 <b>' + ok + '</b> 件' + (bad? '，<b>'+bad+'</b> 张没读进来':'')
-    + '<small>共 ' + pendingCount() + ' 件待分类，点开补品类</small>';
-  document.getElementById('quickbar').classList.add('on');
+  try{ save(); }catch(e){ console.warn(e); }
+  quickMsg('入库 <b>' + ok + '</b> 件' + (bad? '，<b>'+bad+'</b> 张没读进来':'')
+    , '共 ' + pendingCount() + ' 件待分类，点开补品类');
   renderAll();
-  if(ok) toast('已入库 ' + ok + ' 件');
+  if(ok){ toast('已入库 ' + ok + ' 件'); goPending(); }
+  else toast('一张也没读进来，换个格式试试');
 }
 
 document.getElementById('fileCam').onchange = e=>{
@@ -1212,12 +1233,96 @@ document.getElementById('quickDone').onclick = ()=>{
   if(tab==='wardrobe'){ renderCats(); renderGrid(); }
 };
 
-/* 电脑上：把照片直接拖进窗口 */
-['dragover','drop'].forEach(ev=>{
+/* ================= 拖进来就入库（带反馈） ================= */
+let dragDepth = 0;
+function dropHint(on){
+  const dz = document.getElementById('dropzone');
+  if(dz) dz.classList.toggle('on', on);
+}
+function quickMsg(title, sub){
+  const qb = document.getElementById('quickbar');
+  if(qb) qb.classList.add('on');
+  const m = document.getElementById('quickMsg');
+  if(m) m.innerHTML = title + (sub? '<small>'+sub+'</small>' : '');
+}
+function collectFiles(dt){
+  const out = [];
+  if(!dt) return out;
+  if(dt.files && dt.files.length){
+    for(let i=0;i<dt.files.length;i++) out.push(dt.files[i]);
+  }else if(dt.items && dt.items.length){
+    for(let i=0;i<dt.items.length;i++){
+      const it = dt.items[i];
+      if(it && it.kind==='file' && it.getAsFile){
+        const f = it.getAsFile();
+        if(f) out.push(f);
+      }
+    }
+  }
+  return out;
+}
+function imageUrlFrom(dt){
+  try{
+    const html = dt.getData && dt.getData('text/html');
+    if(html){ const m = html.match(/<img[^>]+src=["']([^"']+)["']/i); if(m) return m[1]; }
+    const uri = dt.getData && dt.getData('text/uri-list');
+    if(uri) return uri.split('\n')[0].trim();
+  }catch(e){}
+  return '';
+}
+function pushItem(dataURL, col){
+  DB.items.unshift({
+    id: uid(), photo: dataURL, name: nextUncatName(), cat: '待分类', sub: '',
+    color: (col&&col.name)||'灰', hex: (col&&col.hex)||'#9b9b9b',
+    season: [seasonByMonth()], scene: ['通勤','休闲'],
+    wear: '常穿', reason: '', box: '', status: '在穿', createdAt: Date.now()
+  });
+}
+function importFromUrl(url){
+  quickMsg('正在读这张图…','');
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = ()=>{
+    try{
+      const sc = Math.min(1, 760/Math.max(img.width, img.height));
+      const w = Math.round(img.width*sc), h = Math.round(img.height*sc);
+      const c = document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      const dataURL = c.toDataURL('image/jpeg',0.72);
+      pushItem(dataURL, dominantColor(img));
+      save();
+      document.getElementById('quickThumb').src = dataURL;
+      quickMsg('入库 <b>1</b> 件','共 '+pendingCount()+' 件待分类');
+      renderAll(); goPending();
+    }catch(err){
+      console.warn(err);
+      quickMsg('这张图网页读不到','请先「图片另存为」，再把文件拖进来');
+    }
+  };
+  img.onerror = ()=> quickMsg('这张图读不到','请先「图片另存为」，再把文件拖进来');
+  img.src = url;
+}
+['dragenter','dragover'].forEach(ev=>{
   window.addEventListener(ev, e=>{
     e.preventDefault();
-    if(ev==='drop' && e.dataTransfer && e.dataTransfer.files) importFiles(e.dataTransfer.files);
+    if(ev==='dragenter') dragDepth++;
+    if(e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    dropHint(true);
   });
+});
+window.addEventListener('dragleave', e=>{
+  e.preventDefault();
+  dragDepth = Math.max(0, dragDepth-1);
+  if(dragDepth===0) dropHint(false);
+});
+window.addEventListener('drop', e=>{
+  e.preventDefault();
+  dragDepth = 0; dropHint(false);
+  const files = collectFiles(e.dataTransfer);
+  if(files.length){ importFiles(files); return; }
+  const src = imageUrlFrom(e.dataTransfer);
+  if(src){ importFromUrl(src); return; }
+  quickMsg('没读到图片','如果是从微信里直接拖的，先「另存为」或存到相册再试');
 });
 
 document.getElementById('btnExport').onclick = ()=>{
@@ -1257,19 +1362,37 @@ document.getElementById('btnPrint').onclick = ()=>{
 };
 
 /* ================= 启动 ================= */
+function showTab(t){
+  tab = t;
+  document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.toggle('on', x.dataset.tab===t));
+  ['outfit','wardrobe','lists','saved'].forEach(k=>{ document.getElementById('tab-'+k).hidden = (k!==t); });
+  if(t==='outfit') renderOutfits();
+  if(t==='wardrobe'){ renderCats(); renderGrid(); }
+  if(t==='lists') renderLists();
+  if(t==='saved') renderSaved();
+  if(window.scrollTo) window.scrollTo(0,0);
+}
+function goPending(){ curCat = '待分类'; showTab('wardrobe'); }
 document.querySelectorAll('nav.tabs button').forEach(b=>{
-  b.onclick = ()=>{
-    tab = b.dataset.tab;
-    document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.toggle('on', x===b));
-    ['outfit','wardrobe','lists','saved'].forEach(t=>{ document.getElementById('tab-'+t).hidden = (t!==tab); });
-    if(tab==='wardrobe'){ renderCats(); renderGrid(); }
-    if(tab==='lists'){ renderLists(); }
-    if(tab==='saved'){ renderSaved(); }
-  };
+  b.onclick = ()=> showTab(b.dataset.tab);
 });
 document.getElementById('fab').onclick = ()=> document.getElementById('fileCam').click();
 document.getElementById('fabAlbum').onclick = ()=> document.getElementById('fileAlbum').click();
 document.getElementById('fabManual').onclick = openAdd;
+
+/* 电脑上没有相机：主按钮改成选照片，提示改成拖拽 */
+(function(){
+  const touch = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
+  if(touch) return;
+  const fb = document.getElementById('fab');
+  if(fb){ fb.textContent = '🖼 选照片'; fb.onclick = ()=> document.getElementById('fileAlbum').click(); }
+  const ab = document.getElementById('fabAlbum');
+  if(ab) ab.style.display = 'none';
+  const tp = document.getElementById('tipText');
+  if(tp) tp.textContent = '电脑上直接把照片拖进窗口就行，也可以点「选照片」一次挑多张。';
+})();
+const tipClose = document.getElementById('tipClose');
+if(tipClose) tipClose.onclick = ()=> document.getElementById('tipbar').classList.add('hide');
 document.getElementById('chipUnworn').onclick = ()=>{ onlyUnworn = !onlyUnworn; renderSeasons(); renderOutfits(); };
 document.getElementById('chipBatch').onclick = ()=>{ selectMode ? exitSelect() : enterSelect(); };
 document.getElementById('btnAddBox').onclick = ()=> openBoxForm();
