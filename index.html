@@ -384,7 +384,7 @@ const OLD_CAT = {
 const SIZES = ['XS','S','M','L','XL','均码','34','35','36','37','38','39','40','41','42','43'];
 const SLEEVE_CATS = ['上装','连衣裙','外套','套装'];
 const SEASONS = ['春秋','夏','冬'];
-const OWNERS = [['connie','Connie'],['daniel','Daniel'],['kevin','Kevin'],['home','家里共用']];
+const OWNERS = [['connie','Connie衣橱'],['daniel','Daniel衣橱'],['kevin','Kevin衣橱'],['home','床品']];
 const WEARS = ['常穿','偶尔穿','从未穿'];
 const SCENES = ['正装','通勤','休闲','运动','家居'];
 /* 换季时间点：一年四次，按需改 */
@@ -1662,9 +1662,9 @@ function openLocForm(cb, edit){
 /* ================= 加一件 ================= */
 let draft = null;
 function openAdd(){
-  draft = {id:uid(), photo:null, name:'', owner:DB.owner, cat:'上装', sub:'', sleeve:'', material:'',
+  draft = {id:uid(), photo:null, name:'', owner:DB.owner, cat:(DB.owner==='home'?'床品':'上装'), sub:'', sleeve:'', material:'',
            color:'', hex:'#cccccc', desc:'', size:'', boughtAt:'', pair:'', retiredAt:'',
-           season:[curSeason||seasonByMonth()], scene:['通勤','休闲'], wear:'常穿', locId:''};
+           season:[curSeason||seasonByMonth()], scene:(DB.owner==='home'?['家居']:['通勤','休闲']), wear:'常穿', locId:''};
   renderAddSheet();
 }
 function renderAddSheet(){
