@@ -57,6 +57,22 @@
   .sec .sp{flex:1}
 
   .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:#fff;margin-top:12px}
+  .topic{overflow:hidden;border-radius:14px;border:1px solid var(--line);background:#fff;margin-top:10px}
+  .crow{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .crow:last-child{border-bottom:none}
+  .crow.sel{background:#f2f7f3}
+  .cbox{width:20px;height:20px;border-radius:6px;border:1.5px solid #d5cec1;flex:0 0 auto;
+    display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;cursor:pointer}
+  .cbox.on{background:var(--accent);border-color:var(--accent)}
+  .crow img{width:52px;height:66px;border-radius:10px;object-fit:cover;background:#f0ece4;flex:0 0 auto}
+  .cinfo{flex:1;min-width:0}
+  .cname{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cmeta{font-size:11.5px;color:var(--sub);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cact{display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
+  .cact .mini{padding:5px 11px;font-size:12px}
+  .cartbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 0 4px;position:sticky;top:0;
+    background:var(--bg);z-index:6}
+  .cartbar .who{margin:0;padding:0;max-width:none;flex:0 0 auto}
   table.tb{border-collapse:collapse;width:100%;font-size:12.5px;min-width:980px}
   .tb th,.tb td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;vertical-align:middle}
   .tb th{background:#faf8f4;font-weight:600;color:var(--sub)}
@@ -1061,6 +1077,14 @@ function renderTable(){
       b.onclick = ()=>{ tableMode=mm; renderTable(); };
       seg.appendChild(b);
     });
+    const sp = el('span'); sp.style.cssText='width:12px';
+    seg.appendChild(sp);
+    ['清单','表格'].forEach(st=>{
+      const b = el('button','chip'+(tableStyle===st?' on':''), st);
+      b.style.fontSize='13px';
+      b.onclick = ()=>{ tableStyle=st; renderTable(); };
+      seg.appendChild(b);
+    });
   }
   const wrap = document.getElementById('tableWrap');
   if(!wrap) return;
@@ -1073,19 +1097,115 @@ function renderTable(){
     return;
   }
   if(hint) hint.textContent = ownerName(DB.owner)+' · 共 '+items.length+' 件'
-    + (tableMode==='全部'? ' · 点行可打开，行尾可直接分类或删除' : ' · 同一批字段，按类别拆开看');
-  if(tableMode==='全部'){ wrap.appendChild(buildTable(null, items)); return; }
-  if(tableMode==='按季节'){
-    const used = SEASONS.filter(s=>items.some(i=>(i.season||[]).includes(s)));
-    (used.length?used:SEASONS).forEach(s=>{
-      wrap.appendChild(buildTable(s+'季', items.filter(i=>(i.season||[]).includes(s))));
+    + (tableMode==='全部'? ' · 勾选后可批量分类或删除' : ' · 同一批字段，按类别拆开看');
+  if(tableStyle==='表格'){
+    if(tableMode==='全部'){ wrap.appendChild(buildTable(null, items)); return; }
+    if(tableMode==='按季节'){
+      const used = SEASONS.filter(s=>items.some(i=>(i.season||[]).includes(s)));
+      (used.length?used:SEASONS).forEach(s=>{
+        wrap.appendChild(buildTable(s+'季', items.filter(i=>(i.season||[]).includes(s))));
+      });
+      return;
+    }
+    const usedSc = SCENES.filter(s=>items.some(i=>(i.scene||[]).includes(s)));
+    (usedSc.length?usedSc:SCENES).forEach(s=>{
+      wrap.appendChild(buildTable(s, items.filter(i=>(i.scene||[]).includes(s))));
     });
     return;
   }
-  const used = SCENES.filter(s=>items.some(i=>(i.scene||[]).includes(s)));
-  (used.length?used:SCENES).forEach(s=>{
-    wrap.appendChild(buildTable(s, items.filter(i=>(i.scene||[]).includes(s))));
+  // 购物车式清单
+  wrap.appendChild(cartBar(items));
+  if(tableMode==='全部'){ wrap.appendChild(buildCart(null, items)); return; }
+  if(tableMode==='按季节'){
+    const used = SEASONS.filter(s=>items.some(i=>(i.season||[]).includes(s)));
+    (used.length?used:SEASONS).forEach(s=>{
+      wrap.appendChild(buildCart(s+'季', items.filter(i=>(i.season||[]).includes(s))));
+    });
+    return;
+  }
+  const usedSc = SCENES.filter(s=>items.some(i=>(i.scene||[]).includes(s)));
+  (usedSc.length?usedSc:SCENES).forEach(s=>{
+    wrap.appendChild(buildCart(s, items.filter(i=>(i.scene||[]).includes(s))));
   });
+}
+
+let tableStyle = '清单';
+function cartBar(list){
+  const bar = el('div','cartbar');
+  const allOn = list.length && list.every(i=>sel.has(i.id));
+  const bAll = el('button','mini'+(allOn?' on':''), allOn?'取消全选':'全选');
+  bAll.onclick = ()=>{
+    if(allOn) list.forEach(i=>sel.delete(i.id));
+    else list.forEach(i=>sel.add(i.id));
+    renderTable();
+  };
+  const cnt = el('span','sub','已选 '+sel.size+' 件');
+  const bCls = el('button','mini on','批量分类');
+  bCls.onclick = ()=>{ if(!sel.size){ toast('先勾选'); return; } openClassSheet(Array.from(sel)); };
+  const bDel = el('button','mini','删除选中');
+  bDel.onclick = function(){
+    if(!sel.size){ toast('先勾选'); return; }
+    deleteMany(Array.from(sel), bDel);
+  };
+  bar.appendChild(bAll); bar.appendChild(cnt); bar.appendChild(bCls); bar.appendChild(bDel);
+  return bar;
+}
+function deleteMany(ids, btn){
+  if(btn && btn.dataset.armed !== '1'){
+    btn.dataset.armed='1'; btn._label = btn.textContent;
+    btn.textContent = '再点一次删掉 '+ids.length+' 件';
+    btn.style.background='#fbeee8'; btn.style.color='#b4552f'; btn.style.borderColor='#e8b9a6';
+    setTimeout(function(){
+      if(btn.dataset.armed==='1'){ btn.dataset.armed='0'; btn.textContent=btn._label;
+        btn.style.background=''; btn.style.color=''; btn.style.borderColor=''; }
+    }, 3500);
+    return;
+  }
+  DB.items = DB.items.filter(i=>ids.indexOf(i.id) < 0);
+  DB.saved = DB.saved.filter(s=>s.ids.every(id=>DB.items.some(x=>x.id===id)));
+  ids.forEach(id=>sel.delete(id));
+  save(); renderAll(); toast('已删除 '+ids.length+' 件');
+}
+function buildCart(title, list){
+  const box = el('div');
+  if(title){
+    const h = el('div','tbl-title');
+    h.innerHTML = '<h3>'+esc(title)+'</h3><span class="n">'+list.length+' 件</span>';
+    box.appendChild(h);
+  }
+  const wrap = el('div','topic');
+  if(!list.length){
+    wrap.appendChild(el('div','empty','（这一类还没有衣服）'));
+  }
+  list.forEach(it=>{
+    const on = sel.has(it.id);
+    const row = el('div','crow'+(on?' sel':''));
+    const cb = el('div','cbox'+(on?' on':''), on?'✓':'');
+    cb.onclick = (ev)=>{ ev.stopPropagation(); on?sel.delete(it.id):sel.add(it.id); renderTable(); };
+    const img = el('img'); img.src = it.photo; img.alt='';
+    img.onclick = ()=> openItem(it.id);
+    const info = el('div','cinfo');
+    info.onclick = ()=> openItem(it.id);
+    const l = locOf(it);
+    const line1 = [it.cat, it.sub, it.sleeve, it.material, it.color].filter(Boolean).join(' · ');
+    const line2 = [ (it.season||[]).join('/'), (it.scene||[]).join('/'), it.wear,
+      l? locText(l) : '在外', it.boughtAt? '购'+it.boughtAt : '', it.retiredAt? '淘汰'+it.retiredAt : ''
+    ].filter(Boolean).join(' · ');
+    info.innerHTML = '<div class="cname">'+esc(it.name)+'</div>'
+      + '<div class="cmeta">'+esc(line1||'还没填品类')+'</div>'
+      + '<div class="cmeta">'+esc(line2)+'</div>'
+      + (it.pair? '<div class="cmeta">搭配：'+esc(it.pair)+'</div>' : '');
+    const act = el('div','cact');
+    const bCls = el('button','mini on','分类');
+    bCls.onclick = (ev)=>{ ev.stopPropagation(); openClassSheet([it.id]); };
+    const bDel = el('button','mini','删除');
+    bDel.onclick = (ev)=>{ ev.stopPropagation(); armDelete(it, bDel); };
+    act.appendChild(bCls); act.appendChild(bDel);
+    row.appendChild(cb); row.appendChild(img); row.appendChild(info); row.appendChild(act);
+    wrap.appendChild(row);
+  });
+  box.appendChild(wrap);
+  return box;
 }
 function csvCell(v){
   const s = (v==null?'':String(v));
