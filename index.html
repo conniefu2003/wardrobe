@@ -130,6 +130,9 @@
   .row .t1{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .row .t2{font-size:12px;color:var(--sub);margin-top:2px}
   .tag{display:inline-block;font-size:11.5px;border-radius:6px;padding:1px 7px;background:var(--warn-soft);color:var(--warn);margin-right:5px}
+  .miss{display:inline-block;font-size:11.5px;font-weight:700;border-radius:6px;padding:1px 8px;
+    background:#fdecea;color:#c0392b;border:1px solid #f3c2b8;margin-right:6px}
+  .lab-red{color:#c0392b !important;font-weight:700}
   .tag.b{background:var(--blue-soft);color:var(--blue)}
   .tag.g{background:var(--accent-soft);color:var(--accent)}
 
@@ -1055,11 +1058,20 @@ function renderGrid(){
 /* ================= 渲染：新进待处理 ================= */
 let cartRefresh = function(){ renderTable(); };
 let pendingAll = false;
+/* 缺什么：唯一判据，列表与红色标签共用 */
+function missingOf(it){
+  const m = [];
+  if(it.cat==='待分类'){ m.push('缺品类'); return m; }
+  if(!(it.season||[]).length) m.push('缺季节');
+  if(!(it.scene||[]).length) m.push('缺场合');
+  if(!it.wear) m.push('缺频率');
+  if(!it.locId) m.push('缺位置');
+  return m;
+}
 function pendingLists(all){
   const mine = all ? DB.items.slice() : DB.items.filter(i=>i.owner===DB.owner);
   const noCat = mine.filter(i=>i.cat==='待分类');
-  const noInfo = mine.filter(i=> i.cat!=='待分类' &&
-    (!(i.season||[]).length || !(i.scene||[]).length || !i.wear || !i.locId));
+  const noInfo = mine.filter(i=> i.cat!=='待分类' && missingOf(i).length > 0);
   return {noCat, noInfo};
 }
 function renderPending(){
@@ -1293,19 +1305,14 @@ function buildCart(title, list){
     const line2 = [ (it.season||[]).join('/'), (it.scene||[]).join('/'), it.wear,
       l? locText(l) : '在外', it.boughtAt? '购'+it.boughtAt : '', it.retiredAt? '淘汰'+it.retiredAt : ''
     ].filter(Boolean).join(' · ');
-    const miss = [];
-    if(it.cat==='待分类') miss.push('缺品类');
-    if(!(it.season||[]).length) miss.push('缺季节');
-    if(!(it.scene||[]).length) miss.push('缺场合');
-    if(!it.wear) miss.push('缺频率');
-    if(!it.locId) miss.push('缺位置');
+    const miss = missingOf(it);
     info.innerHTML = '<div class="cname">'+(it.no? '<span style="color:var(--accent);font-size:12px;margin-right:6px">'+esc(it.no)+'</span>':'')+esc(it.name)+'</div>'
       + '<div class="cmeta">'+esc(line1||'还没填品类')+'</div>'
       + '<div class="cmeta">'+esc(line2)+'</div>'
-      + (miss.length? '<div class="cmeta" style="margin-top:4px">'+miss.map(m=>'<span class="tag">'+m+'</span>').join('')+'</div>' : '')
+      + (miss.length? '<div class="cmeta" style="margin-top:5px">'+miss.map(m=>'<span class="miss">'+m+'</span>').join('')+'</div>' : '')
       + (it.pair? '<div class="cmeta">搭配：'+esc(it.pair)+'</div>' : '');
     const act = el('div','cact');
-    const bCls = el('button','mini on', it.cat==='待分类' ? '分类' : '补全');
+    const bCls = el('button','mini on', it.cat==='待分类' ? '分类' : (miss.length? '补全' : '查看'));
     bCls.onclick = (ev)=>{
       ev.stopPropagation();
       if(it.cat==='待分类') openClassSheet([it.id]);
@@ -1632,7 +1639,7 @@ function openItem(id, jumpPair){
 
   // 品类
   const fc = el('div','field');
-  fc.appendChild(el('div','lab', it.cat==='待分类'?'这件是什么？点一下补上':'品类'));
+  fc.appendChild(el('div','lab'+(it.cat==='待分类'?' lab-red':''), it.cat==='待分类'?'这件是什么？点一下补上':'品类'));
   const cc = el('div','chips');
   CATS.forEach(c=>{
     const b = el('button','chip'+(it.cat===c?' on':''), c);
@@ -1686,7 +1693,7 @@ function openItem(id, jumpPair){
 
   // 场合
   const fsc = el('div','field');
-  fsc.appendChild(el('div','lab','什么场合穿'));
+  fsc.appendChild(el('div','lab'+((it.scene||[]).length?'':' lab-red'), '什么场合穿'+((it.scene||[]).length?'':'（待补）')));
   const csc = el('div','chips');
   SCENES.forEach(s=>{
     const on = (it.scene||[]).includes(s);
@@ -1703,7 +1710,7 @@ function openItem(id, jumpPair){
 
   // 季节
   const fs = el('div','field');
-  fs.appendChild(el('div','lab','什么季节穿'));
+  fs.appendChild(el('div','lab'+((it.season||[]).length?'':' lab-red'), '什么季节穿'+((it.season||[]).length?'':'（待补）')));
   const cse = el('div','chips');
   SEASONS.forEach(s=>{
     const on = (it.season||[]).includes(s);
@@ -1720,7 +1727,7 @@ function openItem(id, jumpPair){
 
   // 频率
   const fw = el('div','field');
-  fw.appendChild(el('div','lab','穿得勤吗'));
+  fw.appendChild(el('div','lab'+(it.wear?'':' lab-red'), '穿得勤吗'+(it.wear?'':'（待补）')));
   const cw = el('div','chips');
   WEARS.forEach(w=>{
     const b = el('button','chip'+(it.wear===w?' on':''), w);
@@ -1747,7 +1754,7 @@ function openItem(id, jumpPair){
 
   // 位置
   const fl = el('div','field');
-  fl.appendChild(el('div','lab','存放位置'));
+  fl.appendChild(el('div','lab'+(it.locId?'':' lab-red'), '存放位置'+(it.locId?'':'（待补）')));
   const cl = el('div','chips');
   const bHome = el('button','chip'+(!it.locId?' on':''), '在衣橱/在外');
   bHome.onclick = ()=>{ it.locId=''; save(); openItem(it.id, jumpPair); };
