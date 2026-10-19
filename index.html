@@ -343,49 +343,44 @@
 
 <script>
 /* ================= 常量 ================= */
-/* 类目树：大类 → 品类 → 款式（参照淘系/京东口径，做了合并简化） */
-const DEPTS = {
-  '服装': {
-    '上装':['T恤','衬衫','Polo衫','卫衣','针织衫','毛衣','马甲','吊带','打底衫','西装上衣'],
-    '下装':['牛仔裤','休闲裤','西装裤','阔腿裤','运动裤','短裤','半身裙','打底裤'],
-    '外套':['风衣','大衣','夹克','羽绒服','棉服','皮衣','开衫','冲锋衣'],
-    '连衣裙':['连衣裙','吊带裙','背带裙','衬衫裙'],
-    '套装':['西装套装','休闲套装']
-  },
-  '内衣家居': {
-    '睡衣':['睡衣套装','睡裙','吊带睡裙'],
-    '家居服':['家居服','浴袍'],
-    '贴身衣物':['文胸','内裤','袜子','保暖内衣']
-  },
-  '鞋靴': { '运动鞋':[], '休闲鞋':[], '皮鞋':[], '靴子':[], '凉鞋':[], '拖鞋':[] },
-  '箱包': { '双肩包':[], '单肩包':[], '手提包':[], '斜挎包':[], '钱包':[], '行李箱':[] },
-  '配饰': { '围巾':[], '帽子':[], '腰带':[], '首饰':[], '眼镜':[], '手套':[] },
-  '家纺': { '被子':[], '被套':[], '四件套':[], '枕头':[], '床单':[], '毯子':[], '床垫套':[] }
+/* 品类目录（Connie 定的 11 个，平铺） */
+const CATS = ['上装','下装','外套','连衣裙','睡衣','鞋','包','围巾','帽子','腰带','床品'];
+const SUBCATS = {
+  '上装':['T恤','衬衫','Polo衫','卫衣','针织衫','毛衣','马甲','吊带','打底衫'],
+  '下装':['牛仔裤','休闲裤','西装裤','阔腿裤','运动裤','短裤','半身裙','打底裤'],
+  '外套':['风衣','大衣','夹克','羽绒服','棉服','西装外套','开衫','皮衣'],
+  '连衣裙':['连衣裙','吊带裙','背带裙','衬衫裙'],
+  '睡衣':['睡衣套装','睡裙','吊带睡裙','家居服','浴袍','文胸','内裤','袜子'],
+  '鞋':['运动鞋','休闲鞋','皮鞋','靴子','高跟鞋','凉鞋','拖鞋'],
+  '包':['双肩包','单肩包','手提包','斜挎包','钱包','行李箱'],
+  '围巾':['真丝围巾','羊绒围巾','棉麻围巾','披肩'],
+  '帽子':['棒球帽','贝雷帽','针织帽','渔夫帽','遮阳帽'],
+  '腰带':['皮带','细腰带','宽腰封'],
+  '床品':['被子','被套','四件套','枕套','枕头','床单','毯子','床垫套']
 };
-const DEPT_NAMES = Object.keys(DEPTS);
-const CATS = [];
-const CAT2DEPT = {};
-DEPT_NAMES.forEach(function(d){
-  Object.keys(DEPTS[d]).forEach(function(c){ CATS.push(c); CAT2DEPT[c] = d; });
-});
-const SUBCATS = {};
-DEPT_NAMES.forEach(function(d){
-  Object.keys(DEPTS[d]).forEach(function(c){ SUBCATS[c] = DEPTS[d][c]; });
-});
-function deptOf(cat){ return CAT2DEPT[cat] || '服装'; }
 const SLEEVES = ['无袖','短袖','中袖','长袖'];
 const MATERIALS = ['棉','麻','真丝','雪纺','羊毛','羊绒','针织','牛仔','涤纶','混纺'];
 const MATERIALS_SHOE = ['牛皮','羊皮','麂皮','帆布','橡胶','合成革','网布','绒面'];
 const MATERIALS_BAG  = ['真皮','PU','帆布','尼龙','藤编','绒面'];
 const MATERIALS_HOME = ['纯棉','水洗棉','天丝','亚麻','蚕丝','羽绒','羊毛','化纤','乳胶','记忆棉'];
+const MATERIALS_ACC  = ['真丝','羊毛','羊绒','皮革','棉麻','帆布','金属','亚克力'];
 function materialsFor(cat){
-  const d = deptOf(cat);
-  if(d==='鞋靴') return MATERIALS_SHOE;
-  if(d==='箱包') return MATERIALS_BAG;
-  if(d==='家纺') return MATERIALS_HOME;
-  if(d==='配饰') return ['真丝','羊毛','羊绒','皮革','金属','帆布','亚克力'];
+  if(cat==='鞋') return MATERIALS_SHOE;
+  if(cat==='包') return MATERIALS_BAG;
+  if(cat==='床品') return MATERIALS_HOME;
+  if(cat==='围巾'||cat==='帽子'||cat==='腰带') return MATERIALS_ACC;
   return MATERIALS;
 }
+/* 旧品类 → 新品类 的兜底映射 */
+const SUB2CAT = {};
+CATS.forEach(function(c){ (SUBCATS[c]||[]).forEach(function(s){ SUB2CAT[s] = c; }); });
+const OLD_CAT = {
+  '运动鞋':'鞋','休闲鞋':'鞋','皮鞋':'鞋','靴子':'鞋','凉鞋':'鞋','拖鞋':'鞋',
+  '双肩包':'包','单肩包':'包','手提包':'包','斜挎包':'包','钱包':'包','行李箱':'包',
+  '被子':'床品','被套':'床品','四件套':'床品','枕套':'床品','枕头':'床品','床单':'床品','毯子':'床品','床垫套':'床品',
+  '套装':'上装','家居服':'睡衣','贴身衣物':'睡衣',
+  '首饰':'围巾','眼镜':'围巾','手套':'围巾'
+};
 const SIZES = ['XS','S','M','L','XL','均码','34','35','36','37','38','39','40','41','42','43'];
 const SLEEVE_CATS = ['上装','连衣裙','外套','套装'];
 const SEASONS = ['春秋','夏','冬'];
@@ -528,6 +523,11 @@ function migrate(){
   const omap = {'我':'connie','先生':'daniel','Kevin':'kevin','家':'home','connie':'connie','daniel':'daniel','kevin':'kevin','home':'home'};
   DB.items.forEach(it=>{
     it.owner = omap[it.owner] || 'connie';
+    if(it.cat !== '待分类' && !CATS.includes(it.cat)){
+      const target = SUB2CAT[it.cat] || OLD_CAT[it.cat];
+      if(SUB2CAT[it.cat] && !it.sub) it.sub = it.cat;
+      it.cat = target || '上装';
+    }
     let s = Array.isArray(it.season) ? it.season.slice() : [];
     if(s.includes('四季')) s = ['春秋','夏','冬'];
     s = s.map(x=>smap[x]||x).filter(x=>SEASONS.includes(x));
@@ -1071,11 +1071,11 @@ function csvCell(v){
   return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
 }
 document.getElementById('btnCsv').onclick = ()=>{
-  const head = ['名称','归属','大类','品类','款式','袖长','材质','颜色','季节','场合','频率','位置','购入','淘汰','搭配','描述'];
+  const head = ['名称','归属','品类','款式','袖长','材质','颜色','季节','场合','频率','位置','购入','淘汰','搭配','描述'];
   const rows = [head];
   DB.items.filter(i=>i.owner===DB.owner).forEach(it=>{
     const l = locOf(it);
-    rows.push([it.name, ownerName(it.owner), deptOf(it.cat), it.cat, it.sub, it.sleeve, it.material, it.color,
+    rows.push([it.name, ownerName(it.owner), it.cat, it.sub, it.sleeve, it.material, it.color,
       (it.season||[]).join('/'), (it.scene||[]).join('/'), it.wear,
       l? locText(l) : '在外', it.boughtAt, it.retiredAt, it.pair, it.desc]);
   });
@@ -1966,17 +1966,13 @@ document.getElementById('bClass').onclick = ()=>{
     sheet.innerHTML=''; sheetHead('一次分类 '+sel.size+' 件');
     const f1 = el('div','field');
     f1.appendChild(el('div','lab','选品类'));
-    DEPT_NAMES.forEach(d=>{
-      const row = el('div');
-      row.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px';
-      row.appendChild(el('span','sub',d));
-      Object.keys(DEPTS[d]).forEach(c=>{
-        const b = el('button','chip'+(cat===c?' on':''), c);
-        b.onclick = ()=>{ cat=c; sub=''; draw(); };
-        row.appendChild(b);
-      });
-      f1.appendChild(row);
+    const row = el('div','chips');
+    CATS.forEach(c=>{
+      const b = el('button','chip'+(cat===c?' on':''), c);
+      b.onclick = ()=>{ cat=c; sub=''; draw(); };
+      row.appendChild(b);
     });
+    f1.appendChild(row);
     sheet.appendChild(f1);
     const subs = SUBCATS[cat]||[];
     if(subs.length){
@@ -1993,7 +1989,7 @@ document.getElementById('bClass').onclick = ()=>{
     const cta = el('button','cta','设成「'+cat+(sub?' · '+sub:'')+'」· 共 '+sel.size+' 件');
     cta.onclick = ()=>{
       const n = sel.size;
-      const isHome = deptOf(cat)==='家纺';
+      const isHome = cat==='床品';
       DB.items.forEach(it=>{
         if(!sel.has(it.id)) return;
         it.cat = cat; it.sub = sub;
