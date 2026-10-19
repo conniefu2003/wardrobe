@@ -317,6 +317,8 @@
 
 <div id="batchbar">
   <span class="cnt" id="selCount">已选 0 件</span>
+  <button class="mini" id="bAll">全选</button>
+  <button class="mini on" id="bClass">分类</button>
   <button class="mini" id="bToLoc">收进位置</button>
   <button class="mini" id="bOutLoc">拿出来</button>
   <button class="mini" id="bWearNever">标记从未穿</button>
@@ -893,8 +895,7 @@ function renderWardrobe(){
   }
   renderGrid();
 }
-function renderGrid(){
-  const wrap = document.getElementById('gridWrap'); wrap.innerHTML='';
+function filteredItems(){
   let list = DB.items.filter(i=>i.owner===DB.owner);
   if(view.season!=='全部') list = list.filter(i=>(i.season||[]).includes(view.season));
   if(view.wear!=='全部') list = list.filter(i=>i.wear===view.wear);
@@ -911,6 +912,11 @@ function renderGrid(){
       return hay.indexOf(q) >= 0;
     });
   }
+  return list;
+}
+function renderGrid(){
+  const wrap = document.getElementById('gridWrap'); wrap.innerHTML='';
+  const list = filteredItems();
 
   const stat = document.getElementById('gridStat');
   if(stat){
@@ -1909,6 +1915,7 @@ function exitSelect(){
   const fab=document.getElementById('fabWrap'); if(fab) fab.style.display='';
   const c=document.getElementById('chipBatch');
   if(c){ c.classList.remove('on'); c.textContent='批量：收进位置 / 标记频率'; }
+  const ba=document.getElementById('bAll'); if(ba) ba.textContent='全选';
   renderGrid();
 }
 document.getElementById('bCancel').onclick = exitSelect;
@@ -1940,6 +1947,65 @@ document.getElementById('bDelete').onclick = ()=>{
   save(); exitSelect(); renderAll(); toast('已删除 '+n+' 件');
 };
 document.getElementById('chipDup').onclick = openDupes;
+
+/* 全选 / 批量分类 */
+document.getElementById('bAll').onclick = ()=>{
+  const list = filteredItems();
+  const allSel = list.length && list.every(i=>sel.has(i.id));
+  if(allSel) list.forEach(i=>sel.delete(i.id));
+  else list.forEach(i=>sel.add(i.id));
+  renderGrid(); updateSelCount();
+  document.getElementById('bAll').textContent = (list.length && list.every(i=>sel.has(i.id))) ? '取消全选' : '全选';
+};
+document.getElementById('bClass').onclick = ()=>{
+  if(!sel.size){ toast('先选几件'); return; }
+  let cat='上装', sub='';
+  const draw = ()=>{
+    sheet.innerHTML=''; sheetHead('一次分类 '+sel.size+' 件');
+    const f1 = el('div','field');
+    f1.appendChild(el('div','lab','选品类'));
+    DEPT_NAMES.forEach(d=>{
+      const row = el('div');
+      row.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px';
+      row.appendChild(el('span','sub',d));
+      Object.keys(DEPTS[d]).forEach(c=>{
+        const b = el('button','chip'+(cat===c?' on':''), c);
+        b.onclick = ()=>{ cat=c; sub=''; draw(); };
+        row.appendChild(b);
+      });
+      f1.appendChild(row);
+    });
+    sheet.appendChild(f1);
+    const subs = SUBCATS[cat]||[];
+    if(subs.length){
+      const f2 = el('div','field');
+      f2.appendChild(el('div','lab','款式（可空，只影响名称）'));
+      const c2 = el('div','chips');
+      subs.forEach(s=>{
+        const b = el('button','chip'+(sub===s?' on':''), s);
+        b.onclick = ()=>{ sub = sub===s?'':s; draw(); };
+        c2.appendChild(b);
+      });
+      f2.appendChild(c2); sheet.appendChild(f2);
+    }
+    const cta = el('button','cta','设成「'+cat+(sub?' · '+sub:'')+'」· 共 '+sel.size+' 件');
+    cta.onclick = ()=>{
+      const n = sel.size;
+      const isHome = deptOf(cat)==='家纺';
+      DB.items.forEach(it=>{
+        if(!sel.has(it.id)) return;
+        it.cat = cat; it.sub = sub;
+        if(/^待分类/.test(it.name) || !it.name) it.name = (it.color||'') + (sub||cat);
+        if(isHome) it.scene = ['家居'];
+      });
+      save(); closeSheet(); exitSelect(); renderAll();
+      toast('已分类 '+n+' 件');
+    };
+    sheet.appendChild(cta);
+    mask.classList.add('on');
+  };
+  draw();
+};
 
 /* 查重：同一张照片进了多次 */
 function findDupes(){
