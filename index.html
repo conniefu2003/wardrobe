@@ -1006,7 +1006,7 @@ function buildTable(title, list){
   }
   const wrap = el('div','tablewrap');
   const tb = el('table','tb');
-  const head = ['照片','名称','品类','款式','袖长','材质','颜色','季节','场合','频率','位置','购入','淘汰','搭配'];
+  const head = ['照片','名称','品类','款式','袖长','材质','颜色','季节','场合','频率','位置','购入','淘汰','搭配','操作'];
   const tr0 = el('tr');
   head.forEach(x=>tr0.appendChild(el('th',null,x)));
   const thead = el('thead'); thead.appendChild(tr0); tb.appendChild(thead);
@@ -1033,6 +1033,16 @@ function buildTable(title, list){
       else { td.textContent = c; if(i===13||i===7||i===8) { td.className='cut'; td.title = c; } }
       tr.appendChild(td);
     });
+    const tdAct = el('td');
+    tdAct.style.whiteSpace = 'nowrap';
+    const bCls = el('button','mini on','分类');
+    bCls.style.cssText = 'padding:4px 10px;font-size:12px';
+    bCls.onclick = function(ev){ if(ev) ev.stopPropagation(); openClassSheet([it.id]); };
+    const bDel = el('button','mini','删除');
+    bDel.style.cssText = 'padding:4px 10px;font-size:12px;margin-left:6px';
+    bDel.onclick = function(ev){ if(ev) ev.stopPropagation(); armDelete(it, bDel); };
+    tdAct.appendChild(bCls); tdAct.appendChild(bDel);
+    tr.appendChild(tdAct);
     tr.style.cursor = 'pointer';
     tr.onclick = ()=> openItem(it.id);
     tbody.appendChild(tr);
@@ -1063,7 +1073,7 @@ function renderTable(){
     return;
   }
   if(hint) hint.textContent = ownerName(DB.owner)+' · 共 '+items.length+' 件'
-    + (tableMode==='全部'? ' · 点任意一行可打开修改' : ' · 同一批字段，按类别拆开看');
+    + (tableMode==='全部'? ' · 点行可打开，行尾可直接分类或删除' : ' · 同一批字段，按类别拆开看');
   if(tableMode==='全部'){ wrap.appendChild(buildTable(null, items)); return; }
   if(tableMode==='按季节'){
     const used = SEASONS.filter(s=>items.some(i=>(i.season||[]).includes(s)));
@@ -1964,9 +1974,14 @@ document.getElementById('bAll').onclick = ()=>{
 };
 document.getElementById('bClass').onclick = ()=>{
   if(!sel.size){ toast('先选几件'); return; }
+  openClassSheet(Array.from(sel), function(){ exitSelect(); });
+};
+
+/* 分类弹层：传 id 数组，单个和批量共用 */
+function openClassSheet(ids, after){
   let cat='上装', sub='';
   const draw = ()=>{
-    sheet.innerHTML=''; sheetHead('一次分类 '+sel.size+' 件');
+    sheet.innerHTML=''; sheetHead('分类 · '+ids.length+' 件');
     const f1 = el('div','field');
     f1.appendChild(el('div','lab','选品类'));
     const row = el('div','chips');
@@ -1980,7 +1995,7 @@ document.getElementById('bClass').onclick = ()=>{
     const subs = SUBCATS[cat]||[];
     if(subs.length){
       const f2 = el('div','field');
-      f2.appendChild(el('div','lab','款式（可空，只影响名称）'));
+      f2.appendChild(el('div','lab','款式（可空，只改名称）'));
       const c2 = el('div','chips');
       subs.forEach(s=>{
         const b = el('button','chip'+(sub===s?' on':''), s);
@@ -1989,24 +2004,24 @@ document.getElementById('bClass').onclick = ()=>{
       });
       f2.appendChild(c2); sheet.appendChild(f2);
     }
-    const cta = el('button','cta','设成「'+cat+(sub?' · '+sub:'')+'」· 共 '+sel.size+' 件');
+    const cta = el('button','cta','设成「'+cat+(sub?' · '+sub:'')+'」');
     cta.onclick = ()=>{
-      const n = sel.size;
       const isHome = cat==='床品';
       DB.items.forEach(it=>{
-        if(!sel.has(it.id)) return;
+        if(ids.indexOf(it.id) < 0) return;
         it.cat = cat; it.sub = sub;
         if(/^待分类/.test(it.name) || !it.name) it.name = (it.color||'') + (sub||cat);
         if(isHome) it.scene = ['家居'];
       });
-      save(); closeSheet(); exitSelect(); renderAll();
-      toast('已分类 '+n+' 件');
+      save(); closeSheet(); renderAll();
+      toast('已分类 '+ids.length+' 件');
+      if(after) after();
     };
     sheet.appendChild(cta);
     mask.classList.add('on');
   };
   draw();
-};
+}
 
 /* 查重：同一张照片进了多次 */
 function findDupes(){
