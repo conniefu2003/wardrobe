@@ -2200,7 +2200,8 @@ document.getElementById('bClass').onclick = ()=>{
 
 /* 批量处理：品类/款式/季节/场合/频率/位置 一次设完 */
 function openClassSheet(ids, after){
-  const st = {cat:null, sub:null, season:null, scene:null, wear:null, locId:null, locSet:false};
+  const st = {cat:null, sub:null, material:null, season:null, scene:null, wear:null, locId:null, locSet:false,
+              retire:null, retireReason:''};
   const draw = ()=>{
     sheet.innerHTML=''; sheetHead('批量处理 · '+ids.length+' 件');
     sheet.appendChild(el('div','hint','只改你点过的项，没点的保持原样。'));
@@ -2236,6 +2237,21 @@ function openClassSheet(ids, after){
         f2.appendChild(c2); sheet.appendChild(f2);
       }
     }
+
+    // 材质
+    const mats = materialsFor(st.cat || (DB.items.find(i=>ids.indexOf(i.id)>=0)||{}).cat || '上装');
+    const f2b = el('div','field');
+    f2b.appendChild(el('div','lab','材质'));
+    const c2b = el('div','chips');
+    const b2b = el('button','chip'+(st.material===null?' on':''), '不改');
+    b2b.onclick = ()=>{ st.material=null; draw(); };
+    c2b.appendChild(b2b);
+    mats.forEach(m=>{
+      const b = el('button','chip'+(st.material===m?' on':''), m);
+      b.onclick = ()=>{ st.material = st.material===m?null:m; draw(); };
+      c2b.appendChild(b);
+    });
+    f2b.appendChild(c2b); sheet.appendChild(f2b);
 
     // 季节（多选）
     const f3 = el('div','field');
@@ -2311,13 +2327,42 @@ function openClassSheet(ids, after){
     c6.appendChild(bNl);
     f6.appendChild(c6); sheet.appendChild(f6);
 
+    // 是否淘汰
+    const f7 = el('div','field');
+    f7.appendChild(el('div','lab','是否淘汰'));
+    const c7 = el('div','chips');
+    const b7a = el('button','chip'+(st.retire===null?' on':''), '不改');
+    b7a.onclick = ()=>{ st.retire=null; draw(); };
+    c7.appendChild(b7a);
+    const b7b = el('button','chip'+(st.retire==='keep'?' on':''), '继续用');
+    b7b.onclick = ()=>{ st.retire='keep'; draw(); };
+    c7.appendChild(b7b);
+    const b7c = el('button','chip'+(st.retire==='retire'?' on':''), '淘汰');
+    b7c.onclick = ()=>{ st.retire='retire'; draw(); };
+    c7.appendChild(b7c);
+    f7.appendChild(c7);
+    if(st.retire==='retire'){
+      const lab7 = el('div','lab','淘汰原因'); lab7.style.marginTop='12px';
+      f7.appendChild(lab7);
+      const c7b = el('div','chips');
+      ['起球','褪色','不合身','不喜欢','穿旧了','送人'].forEach(k=>{
+        const b = el('button','chip'+(st.retireReason===k?' on':''), k);
+        b.onclick = ()=>{ st.retireReason = st.retireReason===k?'':k; draw(); };
+        c7b.appendChild(b);
+      });
+      f7.appendChild(c7b);
+    }
+    sheet.appendChild(f7);
+
     // 摘要
     const parts = [];
     if(st.cat) parts.push('品类='+st.cat+(st.sub?'·'+st.sub:''));
+    if(st.material) parts.push('材质='+st.material);
     if(st.season) parts.push('季节='+st.season.join('/'));
     if(st.scene) parts.push('场合='+st.scene.join('/'));
     if(st.wear) parts.push('频率='+st.wear);
     if(st.locSet) parts.push('位置='+(st.locId? locText(DB.locations.find(x=>x.id===st.locId)||{}) : '在外'));
+    if(st.retire) parts.push(st.retire==='retire' ? '淘汰'+(st.retireReason?'（'+st.retireReason+'）':'') : '继续用');
     const missing = [];
     if(!st.cat) missing.push('品类');
     if(!st.season) missing.push('季节');
@@ -2340,6 +2385,13 @@ function openClassSheet(ids, after){
         }
         if(st.season) it.season = st.season.slice();
         if(st.scene) it.scene = st.scene.slice();
+        if(st.material) it.material = st.material;
+        if(st.retire==='retire'){
+          it.retiredAt = it.retiredAt || new Date().toISOString().slice(0,7);
+          it.retireReason = st.retireReason || it.retireReason || '';
+        }else if(st.retire==='keep'){
+          it.retiredAt = ''; it.retireReason = '';
+        }
         if(st.wear){ it.wear = st.wear; if(st.wear==='常穿') it.reason=''; else if(!it.reason) it.reason = REASONS[0]; }
         if(st.locSet) it.locId = st.locId || '';
         if(isHome) it.scene = ['家居'];
