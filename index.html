@@ -243,7 +243,9 @@
       <button class="mini ghost" id="tipClose">知道了</button>
     </div>
     <div class="chips" id="catChips"></div>
-    <div class="chips" id="storeChips"></div>
+    <div class="chips" id="subChips" style="margin-top:10px"></div>
+    <div class="chips" id="attrChips" style="margin-top:10px"></div>
+    <div class="chips" style="margin-top:10px" id="storeChips"></div>
     <div style="margin-top:10px">
       <button class="chip" id="chipBatch">批量收纳 · 多选</button>
     </div>
@@ -312,6 +314,10 @@ const SUBCATS = {
   '配饰':['围巾','腰带','帽子','首饰'],
   '睡衣':['睡衣套装','睡裙','吊带睡裙','居家服','浴袍']
 };
+const SLEEVES = ['无袖','短袖','中袖','长袖'];
+const MATERIALS = ['棉','麻','真丝','雪纺','羊毛','羊绒','针织','牛仔','涤纶','混纺'];
+const CLOTH_CATS = ['上装','下装','外套','连衣裙','睡衣'];   // 有材质的
+const SLEEVE_CATS = ['上装','连衣裙','外套'];                // 有袖长的
 const SEASONS = ['春','夏','秋','冬','四季'];
 const SCENES = ['通勤','休闲','正式','运动','家居'];
 const WEARS = ['常穿','偶尔','没穿'];
@@ -610,6 +616,7 @@ function pickOutfits(opts){
 
 /* ================= 渲染：搭配 ================= */
 let tab='outfit', curCat='全部', curStore='全部', selectMode=false;
+let curSub='全部', curSleeve='全部', curMat='全部';
 const sel = new Set();
 
 function renderSeasons(){
@@ -684,9 +691,42 @@ function renderCats(){
     const n = c==='全部'? DB.items.length : DB.items.filter(i=>i.cat===c).length;
     const b = el('button','chip'+(curCat===c?' on':''), c+' <span style="opacity:.6">'+n+'</span>');
     if(c==='待分类') b.style.borderColor = '#e0b9a6';
-    b.onclick = ()=>{ curCat=c; renderCats(); renderGrid(); };
+    b.onclick = ()=>{ curCat=c; curSub='全部'; curSleeve='全部'; curMat='全部'; renderCats(); renderGrid(); };
     box.appendChild(b);
   });
+
+  // 二级：款式
+  const subBox = document.getElementById('subChips'); subBox.innerHTML='';
+  if(curCat!=='全部' && curCat!=='待分类'){
+    const subs = SUBCATS[curCat] || [];
+    const all = ['全部', ...subs];
+    all.forEach(s=>{
+      const n = s==='全部' ? DB.items.filter(i=>i.cat===curCat).length
+                           : DB.items.filter(i=>i.cat===curCat && i.sub===s).length;
+      const b = el('button','chip'+(curSub===s?' on':''), (s==='全部'?'款式·全部':s)+' <span style="opacity:.55">'+n+'</span>');
+      b.onclick = ()=>{ curSub=s; renderCats(); renderGrid(); };
+      subBox.appendChild(b);
+    });
+  }
+
+  // 三级：袖长 / 材质
+  const attrBox = document.getElementById('attrChips'); attrBox.innerHTML='';
+  if(curCat!=='全部' && curCat!=='待分类'){
+    const mkRow = (label, values, cur, setter) => {
+      const wrap = el('div'); wrap.style.cssText='display:flex;gap:8px;flex-wrap:wrap;align-items:center;width:100%';
+      wrap.appendChild(el('span','sub', label+'：'));
+      ['全部', ...values].forEach(v=>{
+        const b = el('button','chip'+(cur===v?' on':''), v);
+        b.style.fontSize='13px'; b.style.padding='4px 12px';
+        b.onclick = ()=>{ setter(v); renderCats(); renderGrid(); };
+        wrap.appendChild(b);
+      });
+      attrBox.appendChild(wrap);
+    };
+    if(SLEEVE_CATS.includes(curCat)) mkRow('袖长', SLEEVES, curSleeve, v=>curSleeve=v);
+    if(CLOTH_CATS.includes(curCat)) mkRow('材质', MATERIALS, curMat, v=>curMat=v);
+  }
+
   const box2 = document.getElementById('storeChips'); box2.innerHTML='';
   const stores = [['全部','全部'],['在家','在衣橱'],['箱子','在箱里'],['没穿','没穿过']];
   stores.forEach(([k,label])=>{
@@ -698,11 +738,14 @@ function renderCats(){
 function renderGrid(){
   const wrap = document.getElementById('gridWrap'); wrap.innerHTML='';
   let list = curCat==='全部'? DB.items.slice() : DB.items.filter(i=>i.cat===curCat);
+  if(curSub && curSub!=='全部') list = list.filter(i=>i.sub===curSub);
+  if(curSleeve && curSleeve!=='全部') list = list.filter(i=>i.sleeve===curSleeve);
+  if(curMat && curMat!=='全部') list = list.filter(i=>i.material===curMat);
   if(curStore==='在家') list = list.filter(i=>!i.box);
   if(curStore==='箱子') list = list.filter(i=>i.box);
   if(curStore==='没穿') list = list.filter(i=>i.wear==='没穿');
   if(!list.length){
-    wrap.appendChild(emptyCard('这里还没有衣服','点右下角「＋ 加一件」，拍一张、选个品类就存进来了。'));
+    wrap.appendChild(emptyCard('这里还没有衣服','换个筛选条件，或者点右下角「拍照」加一件。'));
     return;
   }
   const g = el('div','grid');
@@ -712,9 +755,12 @@ function renderGrid(){
     const bx = boxOf(it);
     if(bx) badges += '<span class="badge b">'+esc(bx.code)+'</span>';
     else if(it.wear==='没穿') badges += '<span class="badge w">没穿</span>';
+    const detail = [it.sleeve, it.material].filter(Boolean).join(' · ');
     d.innerHTML = badges + '<div class="ph"><img src="'+it.photo+'" alt=""></div>'
       + '<div class="meta"><div class="nm">'+esc(it.name)+'</div>'
-      + '<div class="tg"><span class="dot" style="background:'+it.hex+'"></span>'+it.color+' · '+it.cat+'</div></div>';
+      + '<div class="tg"><span class="dot" style="background:'+it.hex+'"></span>'+it.color+' · '+(it.sub||it.cat)+'</div>'
+      + (detail? '<div class="tg" style="opacity:.8">'+esc(detail)+'</div>' : '')
+      + '</div>';
     if(selectMode) d.appendChild(el('div','tick', sel.has(it.id)?'✓':''));
     d.onclick = ()=>{
       if(selectMode){ sel.has(it.id)? sel.delete(it.id) : sel.add(it.id); renderGrid(); updateSelCount(); return; }
@@ -859,7 +905,8 @@ function openItem(id, jumpPair){
   sheet.appendChild(f);
 
   const info = el('div','why');
-  info.innerHTML = it.cat + (it.sub?' · '+it.sub:'') + ' ｜ ' + it.color + ' ｜ '
+  info.innerHTML = it.cat + (it.sub?' · '+it.sub:'') + (it.sleeve?' · '+it.sleeve:'')
+    + (it.material?' · '+it.material:'') + ' ｜ ' + it.color + ' ｜ '
     + (it.season||[]).join('/') + ' ｜ ' + (it.scene||[]).join('/');
   sheet.appendChild(info);
 
@@ -888,6 +935,33 @@ function openItem(id, jumpPair){
     if(c0b.children.length) f0.appendChild(c0b);
   }
   sheet.appendChild(f0);
+
+  // 袖长 / 材质
+  if(SLEEVE_CATS.includes(it.cat) || CLOTH_CATS.includes(it.cat)){
+    const fa = el('div','field');
+    if(SLEEVE_CATS.includes(it.cat)){
+      fa.appendChild(el('div','lab','袖长'));
+      const cs = el('div','chips');
+      SLEEVES.forEach(s=>{
+        const b = el('button','chip'+(it.sleeve===s?' on':''), s);
+        b.onclick = ()=>{ it.sleeve = it.sleeve===s?'':s; save(); openItem(it.id, jumpPair); };
+        cs.appendChild(b);
+      });
+      fa.appendChild(cs);
+    }
+    if(CLOTH_CATS.includes(it.cat)){
+      const lab = el('div','lab','材质'); lab.style.marginTop='14px';
+      fa.appendChild(lab);
+      const cm = el('div','chips');
+      MATERIALS.forEach(s=>{
+        const b = el('button','chip'+(it.material===s?' on':''), s);
+        b.onclick = ()=>{ it.material = it.material===s?'':s; save(); openItem(it.id, jumpPair); };
+        cm.appendChild(b);
+      });
+      fa.appendChild(cm);
+    }
+    sheet.appendChild(fa);
+  }
 
   // 穿用状态
   const f1 = el('div','field');
@@ -1056,8 +1130,8 @@ function openBoxForm(cb, edit){
 /* ================= 加一件 ================= */
 let draft = null;
 function openAdd(){
-  draft = {id:uid(), photo:null, name:'', cat:'上装', sub:'', color:'', hex:'#cccccc',
-           season:[seasonByMonth()], scene:['通勤','休闲'], wear:'常穿', box:''};
+  draft = {id:uid(), photo:null, name:'', cat:'上装', sub:'', sleeve:'', material:'',
+           color:'', hex:'#cccccc', season:[seasonByMonth()], scene:['通勤','休闲'], wear:'常穿', box:''};
   renderAddSheet();
 }
 function renderAddSheet(){
@@ -1083,7 +1157,7 @@ function renderAddSheet(){
   const c3 = el('div','chips');
   CATS.forEach(c=>{
     const b = el('button','chip'+(draft.cat===c?' on':''), c);
-    b.onclick = ()=>{ draft.cat=c; draft.sub=''; renderAddSheet(); };
+    b.onclick = ()=>{ draft.cat=c; draft.sub=''; draft.sleeve=''; draft.material=''; renderAddSheet(); };
     c3.appendChild(b);
   });
   f3.appendChild(c3); sheet.appendChild(f3);
@@ -1097,6 +1171,32 @@ function renderAddSheet(){
     c4.appendChild(b);
   });
   f4.appendChild(c4); sheet.appendChild(f4);
+
+  // 袖长
+  if(SLEEVE_CATS.includes(draft.cat)){
+    const f4b = el('div','field');
+    f4b.appendChild(el('div','lab','袖长'));
+    const c4b = el('div','chips');
+    SLEEVES.forEach(s=>{
+      const b = el('button','chip'+(draft.sleeve===s?' on':''), s);
+      b.onclick = ()=>{ draft.sleeve = draft.sleeve===s?'':s; renderAddSheet(); };
+      c4b.appendChild(b);
+    });
+    f4b.appendChild(c4b); sheet.appendChild(f4b);
+  }
+
+  // 材质
+  if(CLOTH_CATS.includes(draft.cat)){
+    const f4c = el('div','field');
+    f4c.appendChild(el('div','lab','材质'));
+    const c4c = el('div','chips');
+    MATERIALS.forEach(s=>{
+      const b = el('button','chip'+(draft.material===s?' on':''), s);
+      b.onclick = ()=>{ draft.material = draft.material===s?'':s; renderAddSheet(); };
+      c4c.appendChild(b);
+    });
+    f4c.appendChild(c4c); sheet.appendChild(f4c);
+  }
 
   const f5 = el('div','field');
   f5.appendChild(el('div','lab','颜色'+(draft.hex?'（自动识别，可改）':'')));
@@ -1158,6 +1258,7 @@ function commitDraft(){
   const name = (draft.name||'').trim() || (draft.color||'') + (draft.sub||draft.cat||'');
   DB.items.unshift({
     id: draft.id, photo: draft.photo, name, cat: draft.cat, sub: draft.sub,
+    sleeve: draft.sleeve||'', material: draft.material||'',
     color: draft.color||'灰', hex: draft.hex||'#9b9b9b',
     season: draft.season.length? draft.season : ['四季'],
     scene: draft.scene.length? draft.scene : ['休闲'],
@@ -1355,6 +1456,7 @@ function imageUrlFrom(dt){
 function pushItem(dataURL, col){
   DB.items.unshift({
     id: uid(), photo: dataURL, name: nextUncatName(), cat: '待分类', sub: '',
+    sleeve: '', material: '',
     color: (col&&col.name)||'灰', hex: (col&&col.hex)||'#9b9b9b',
     season: [seasonByMonth()], scene: ['通勤','休闲'],
     wear: '常穿', reason: '', box: '', status: '在穿', createdAt: Date.now()
@@ -1432,7 +1534,7 @@ document.getElementById('btnPrint').onclick = ()=>{
     const d = el('div','pbox');
     d.innerHTML = '<h3>'+esc(b.code)+'</h3>'
       + '<div class="pmeta">'+(esc(b.place)||'位置未填')+' · '+inBox.length+' 件 · 我的衣橱</div>'
-      + '<div class="plist">'+ inBox.map(i=>'<div>'+esc(i.name)+'（'+i.cat+'·'+i.color+'）</div>').join('') + '</div>';
+      + '<div class="plist">'+ inBox.map(i=>'<div>'+esc(i.name)+'（'+[i.cat,i.sub,i.material].filter(Boolean).join('·')+'）</div>').join('') + '</div>';
     area.appendChild(d);
   });
   window.print();
