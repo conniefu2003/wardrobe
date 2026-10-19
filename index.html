@@ -263,7 +263,8 @@
     <div class="frow"><span class="fl">位置</span><div class="chips xs" id="fLoc"></div></div>
     <div class="frow"><span class="fl">品类</span><div class="chips xs" id="fCat"></div></div>
     <div class="frow"><span class="fl">款式</span><div class="chips xs" id="fSub"></div></div>
-    <div class="frow" id="attrRow"><span class="fl">袖/料</span><div class="chips xs" id="fAttr"></div></div>
+    <div class="frow" id="sleeveRow" style="display:none"><span class="fl">袖长</span><div class="chips xs" id="fSleeve"></div></div>
+    <div class="frow" id="matRow" style="display:none"><span class="fl">材质</span><div class="chips xs" id="fMat"></div></div>
     <div class="frow" style="margin-top:14px">
       <input type="text" id="fSearch" placeholder="搜：名字 / 描述 / 材质 / 颜色" style="max-width:340px">
     </div>
@@ -880,23 +881,29 @@ function renderWardrobe(){
       subBox.appendChild(b);
     });
   }
-  // 袖长/材质
-  const attrBox = document.getElementById('fAttr');
-  attrBox.innerHTML='';
-  const mats = materialsFor(view.cat);
-  document.getElementById('attrRow').style.display = (SLEEVE_CATS.includes(view.cat)||mats.length)?'':'none';
-  if(SLEEVE_CATS.includes(view.cat)){
+  // 袖长
+  const sleeveBox = document.getElementById('fSleeve');
+  sleeveBox.innerHTML='';
+  const showSleeve = SLEEVE_CATS.includes(view.cat);
+  document.getElementById('sleeveRow').style.display = showSleeve ? '' : 'none';
+  if(showSleeve){
     ['全部', ...SLEEVES].forEach(s=>{
       const b = el('button','chip'+(view.sleeve===s?' on':''), s);
       b.onclick = ()=>{ view.sleeve=s; renderWardrobe(); };
-      attrBox.appendChild(b);
+      sleeveBox.appendChild(b);
     });
   }
+
+  // 材质
+  const matBox = document.getElementById('fMat');
+  matBox.innerHTML='';
+  const mats = materialsFor(view.cat);
+  document.getElementById('matRow').style.display = mats.length ? '' : 'none';
   if(mats.length){
     ['全部', ...mats].forEach(s=>{
       const b = el('button','chip'+(view.mat===s?' on':''), s);
       b.onclick = ()=>{ view.mat=s; renderWardrobe(); };
-      attrBox.appendChild(b);
+      matBox.appendChild(b);
     });
   }
   renderGrid();
