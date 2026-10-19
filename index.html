@@ -1061,6 +1061,7 @@ function renderPending(){
     : who+' · 没有待处理的，都整理好了。';
   if(!total){
     wrap.appendChild(emptyCard('新进队列是空的','拍完照会自动落到这里，处理完就消失。'));
+    syncBatchBar();
     return;
   }
   if(noCat.length){
@@ -1074,6 +1075,7 @@ function renderPending(){
     wrap.appendChild(el('div','hint','缺季节、缺场合、或缺位置——补上以后换季和总表才算得准。'));
     wrap.appendChild(buildCart(null, noInfo));
   }
+  syncBatchBar();
 }
 
 /* ================= 渲染：总表 ================= */
@@ -1246,7 +1248,7 @@ function buildCart(title, list){
     const on = sel.has(it.id);
     const row = el('div','crow'+(on?' sel':''));
     const cb = el('div','cbox'+(on?' on':''), on?'✓':'');
-    cb.onclick = (ev)=>{ ev.stopPropagation(); on?sel.delete(it.id):sel.add(it.id); cartRefresh(); };
+    cb.onclick = (ev)=>{ ev.stopPropagation(); on?sel.delete(it.id):sel.add(it.id); syncBatchBar(); cartRefresh(); };
     const img = el('img'); img.src = it.photo; img.alt='';
     img.onclick = ()=> openItem(it.id);
     const info = el('div','cinfo');
@@ -2134,6 +2136,14 @@ window.addEventListener('drop', e=>{
 
 /* ================= 批量 ================= */
 function updateSelCount(){ document.getElementById('selCount').textContent = '已选 '+sel.size+' 件'; }
+function syncBatchBar(){
+  const on = sel.size > 0 || selectMode;
+  const bar = document.getElementById('batchbar');
+  if(bar) bar.classList.toggle('on', on);
+  const fab = document.getElementById('fabWrap');
+  if(fab) fab.style.display = on ? 'none' : '';
+  updateSelCount();
+}
 function enterSelect(){
   selectMode=true; sel.clear();
   document.getElementById('batchbar').classList.add('on');
@@ -2151,12 +2161,12 @@ function exitSelect(){
   const ba=document.getElementById('bAll'); if(ba) ba.textContent='全选';
   renderGrid();
 }
-document.getElementById('bCancel').onclick = exitSelect;
+document.getElementById('bCancel').onclick = ()=>{ sel.clear(); exitSelect(); refreshTab(); };
 document.getElementById('bToLoc').onclick = ()=>{
   if(!sel.size){ toast('先选衣服'); return; }
   openLocPick(id=>{
     DB.items.forEach(i=>{ if(sel.has(i.id)) i.locId=id; });
-    save(); exitSelect(); renderAll();
+    save(); sel.clear(); exitSelect(); renderAll();
     const l = DB.locations.find(x=>x.id===id);
     toast('已收进 '+(l?locText(l):''));
   });
@@ -2164,12 +2174,12 @@ document.getElementById('bToLoc').onclick = ()=>{
 document.getElementById('bOutLoc').onclick = ()=>{
   if(!sel.size){ toast('先选衣服'); return; }
   DB.items.forEach(i=>{ if(sel.has(i.id)) i.locId=''; });
-  save(); exitSelect(); renderAll(); toast('已拿出来');
+  save(); sel.clear(); exitSelect(); renderAll(); toast('已拿出来');
 };
 document.getElementById('bWearNever').onclick = ()=>{
   if(!sel.size){ toast('先选衣服'); return; }
   DB.items.forEach(i=>{ if(sel.has(i.id)){ i.wear='从未穿'; if(!i.reason) i.reason=REASONS[0]; } });
-  save(); exitSelect(); renderAll(); toast('已标记从未穿');
+  save(); sel.clear(); exitSelect(); renderAll(); toast('已标记从未穿');
 };
 document.getElementById('bDelete').onclick = ()=>{
   if(!sel.size){ toast('先选衣服'); return; }
@@ -2183,16 +2193,21 @@ document.getElementById('chipDup').onclick = openDupes;
 
 /* 全选 / 批量分类 */
 document.getElementById('bAll').onclick = ()=>{
-  const list = filteredItems();
+  let list;
+  if(tab==='pending'){ const p = pendingLists(pendingAll); list = p.noCat.concat(p.noInfo); }
+  else if(tab==='table') list = DB.items.filter(i=>i.owner===DB.owner);
+  else list = filteredItems();
   const allSel = list.length && list.every(i=>sel.has(i.id));
   if(allSel) list.forEach(i=>sel.delete(i.id));
   else list.forEach(i=>sel.add(i.id));
-  renderGrid(); updateSelCount();
-  document.getElementById('bAll').textContent = (list.length && list.every(i=>sel.has(i.id))) ? '取消全选' : '全选';
+  syncBatchBar();
+  refreshTab();
+  const b = document.getElementById('bAll');
+  if(b) b.textContent = (list.length && list.every(i=>sel.has(i.id))) ? '取消全选' : '全选';
 };
 document.getElementById('bClass').onclick = ()=>{
   if(!sel.size){ toast('先选几件'); return; }
-  openClassSheet(Array.from(sel), function(){ exitSelect(); });
+  openClassSheet(Array.from(sel), function(){ sel.clear(); syncBatchBar(); refreshTab(); });
 };
 
 /* 分类弹层：传 id 数组，单个和批量共用 */
@@ -2236,6 +2251,10 @@ function openClassSheet(ids, after){
       if(after) after();
     };
     sheet.appendChild(cta);
+    const cancel = el('button','cta danger','取消');
+    cancel.style.marginTop='10px';
+    cancel.onclick = ()=>{ closeSheet(); if(after) after(); };
+    sheet.appendChild(cancel);
     mask.classList.add('on');
   };
   draw();
