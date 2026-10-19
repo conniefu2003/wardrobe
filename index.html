@@ -235,20 +235,11 @@
     <button data-tab="wardrobe" class="on">衣橱</button>
     <button data-tab="season">换季</button>
     <button data-tab="lists">清单</button>
-    <button data-tab="outfit">搭配</button>
   </nav>
 </header>
 <div id="warnbar"></div>
 
 <main>
-  <!-- 今天穿 -->
-  <section id="tab-outfit" hidden>
-    <div class="chips" id="seasonChips"></div>
-    <div class="hint" id="outfitHint"></div>
-    <div id="outfitList"></div>
-    <div id="savedBlock"></div>
-  </section>
-
   <!-- 衣橱 -->
   <section id="tab-wardrobe">
     <div id="tipbar">
@@ -722,13 +713,9 @@ function outfitCard(o, idx, showActions){
   return c;
 }
 function renderSeasonPickers(){
-  const box = document.getElementById('seasonChips'); box.innerHTML='';
-  SEASONS.forEach(s=>{
-    const b = el('button','chip'+(curSeason===s?' on':''), s);
-    b.onclick = ()=>{ curSeason=s; renderSeasonPickers(); renderOutfits(); };
-    box.appendChild(b);
-  });
-  const box2 = document.getElementById('sSeasonChips'); box2.innerHTML='';
+  const box2 = document.getElementById('sSeasonChips');
+  if(!box2) return;
+  box2.innerHTML='';
   SEASONS.forEach(s=>{
     const b = el('button','chip'+(curSeason===s?' on':''), s);
     b.onclick = ()=>{ curSeason=s; renderSeasonPickers(); renderSeasonPlan(); };
@@ -737,6 +724,7 @@ function renderSeasonPickers(){
 }
 function renderOutfits(){
   const box = document.getElementById('outfitList');
+  if(!box) return;
   const hint = document.getElementById('outfitHint');
   box.innerHTML='';
   const mine = DB.items.filter(i=>i.owner===DB.owner);
@@ -757,6 +745,7 @@ function renderOutfits(){
 }
 function renderSaved(){
   const wrap = document.getElementById('savedBlock');
+  if(!wrap) return;
   wrap.innerHTML='';
   const mine = DB.saved.filter(s=>s.ids.some(id=>{
     const it = DB.items.find(x=>x.id===id); return it && it.owner===DB.owner;
@@ -1053,7 +1042,6 @@ function refreshTab(){
   if(tab==='wardrobe') renderWardrobe();
   else if(tab==='season') renderSeasonPlan();
   else if(tab==='lists') renderLists();
-  else { renderOutfits(); renderSaved(); }
 }
 mask.onclick = e=>{ if(e.target===mask) closeSheet(); };
 function sheetHead(title){
@@ -1764,8 +1752,7 @@ document.getElementById('btnPrint').onclick = ()=>{
 function showTab(t){
   tab = t;
   document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.toggle('on', x.dataset.tab===t));
-  ['outfit','wardrobe','season','lists'].forEach(k=>{ document.getElementById('tab-'+k).hidden = (k!==t); });
-  if(t==='outfit'){ renderOutfits(); renderSaved(); }
+  ['wardrobe','season','lists'].forEach(k=>{ const s=document.getElementById('tab-'+k); if(s) s.hidden = (k!==t); });
   if(t==='wardrobe') renderWardrobe();
   if(t==='season') renderSeasonPlan();
   if(t==='lists') renderLists();
@@ -1774,7 +1761,6 @@ function showTab(t){
 function renderAll(){
   renderOwnerBox();
   renderSeasonPickers();
-  renderOutfits(); renderSaved();
   renderWardrobe();
   renderSeasonPlan();
   renderLists();
