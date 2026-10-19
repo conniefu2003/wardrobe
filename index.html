@@ -71,8 +71,7 @@
   .cmeta{font-size:11.5px;color:var(--sub);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .cact{display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
   .cact .mini{padding:5px 11px;font-size:12px}
-  .cartbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 0 4px;position:sticky;top:0;
-    background:var(--bg);z-index:6}
+  .cartbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 0 8px}
   .cartbar .who{margin:0;padding:0;max-width:none;flex:0 0 auto}
   table.tb{border-collapse:collapse;width:100%;font-size:12.5px;min-width:980px}
   .tb th,.tb td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;vertical-align:middle}
@@ -1151,6 +1150,7 @@ function buildTable(title, list){
   return box;
 }
 function renderTable(){
+  cartRefresh = renderTable;
   const seg = document.getElementById('tableSeg');
   if(seg){
     seg.innerHTML='';
@@ -1205,13 +1205,14 @@ function renderTable(){
   }
   // 购物车式清单
   wrap.appendChild(cartBar(items));
-  if(tableMode==='全部'){ wrap.appendChild(buildCart(null, items)); return; }
+  if(tableMode==='全部'){ wrap.appendChild(buildCart(null, items)); syncBatchBar(); return; }
   if(tableMode==='按品类'){
     CATS.forEach(c=>{
       const sub = items.filter(i=>i.cat===c);
       if(!sub.length) return;
       wrap.appendChild(buildCart(c, sub));
     });
+    syncBatchBar();
     return;
   }
   if(tableMode==='按季节'){
@@ -1219,12 +1220,14 @@ function renderTable(){
     (used.length?used:SEASONS).forEach(s=>{
       wrap.appendChild(buildCart(s+'季', items.filter(i=>(i.season||[]).includes(s))));
     });
+    syncBatchBar();
     return;
   }
   const usedSc = SCENES.filter(s=>items.some(i=>(i.scene||[]).includes(s)));
   (usedSc.length?usedSc:SCENES).forEach(s=>{
     wrap.appendChild(buildCart(s, items.filter(i=>(i.scene||[]).includes(s))));
   });
+  syncBatchBar();
 }
 
 let tableStyle = '清单';
