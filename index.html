@@ -389,7 +389,7 @@ function materialsFor(cat){
 const SIZES = ['XS','S','M','L','XL','均码','34','35','36','37','38','39','40','41','42','43'];
 const SLEEVE_CATS = ['上装','连衣裙','外套','套装'];
 const SEASONS = ['春秋','夏','冬'];
-const OWNERS = [['我','我的衣橱'],['先生','先生的衣橱'],['Kevin','Kevin的衣橱'],['家','家里的床品']];
+const OWNERS = [['connie','Connie'],['daniel','Daniel'],['kevin','Kevin'],['home','家里共用']];
 const WEARS = ['常穿','偶尔穿','从未穿'];
 const SCENES = ['正装','通勤','休闲','运动','家居'];
 /* 换季时间点：一年四次，按需改 */
@@ -422,7 +422,7 @@ const HUE = {'红':0,'橙':28,'黄':52,'绿':130,'蓝':212,'紫':272,'粉':332,'
 
 /* ================= 状态 ================= */
 const KEY = 'wardrobe.v3';
-let DB = {items:[], saved:[], locations:[], gaps:[], owner:'我', memOnly:false};
+let DB = {items:[], saved:[], locations:[], gaps:[], owner:'connie', memOnly:false};
 let view = {season:'全部', wear:'全部', loc:'全部', cat:'全部', sub:'全部', sleeve:'全部', mat:'全部'};
 let tab = 'wardrobe';
 let searchQ = '';
@@ -525,8 +525,9 @@ function migrate(){
     DB.boxes = null;
   }
   const smap = {'春':'春秋','秋':'春秋','夏':'夏','冬':'冬'};
+  const omap = {'我':'connie','先生':'daniel','Kevin':'kevin','家':'home','connie':'connie','daniel':'daniel','kevin':'kevin','home':'home'};
   DB.items.forEach(it=>{
-    if(!it.owner) it.owner = '我';
+    it.owner = omap[it.owner] || 'connie';
     let s = Array.isArray(it.season) ? it.season.slice() : [];
     if(s.includes('四季')) s = ['春秋','夏','冬'];
     s = s.map(x=>smap[x]||x).filter(x=>SEASONS.includes(x));
@@ -549,7 +550,7 @@ function migrate(){
     if(!it.material) it.material = '';
     if(!it.sub) it.sub = '';
   });
-  if(!DB.owner) DB.owner = '我';
+  if(!DB.owner) DB.owner = 'connie';
 }
 async function load(){
   const mode = await Store.open();
@@ -601,7 +602,8 @@ function isStored(it){
 function ownerName(o){
   const hit = OWNERS.filter(x=>x[0]===o)[0];
   if(hit) return hit[1];
-  return o==='家' ? '家里的床品' : (o||'我');
+  const map = {'我':'Connie','先生':'Daniel','Kevin':'Kevin','家':'家里共用'};
+  return map[o] || o || 'Connie';
 }
 
 /* ================= 取色 ================= */
@@ -1635,7 +1637,7 @@ function openLocForm(cb, edit){
     const f4 = el('div','field');
     f4.appendChild(el('div','lab','属于谁'));
     const c5 = el('div','chips');
-    [['','共用'],['我','我的'],['先生','先生的']].forEach(([v,label])=>{
+    [['','共用'],['connie','Connie'],['daniel','Daniel'],['kevin','Kevin'],['home','家里']].forEach(([v,label])=>{
       const b = el('button','chip'+(l.owner===v?' on':''), label);
       b.onclick = ()=>{ l.owner=v; draw(); };
       c5.appendChild(b);
