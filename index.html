@@ -1072,7 +1072,7 @@ function renderPending(){
     const sec = el('div','sec');
     sec.innerHTML = '<h2>资料不全</h2><span class="cnt warn">'+noInfo.length+'</span><span class="sp"></span>';
     wrap.appendChild(sec);
-    wrap.appendChild(el('div','hint','缺季节、缺场合、或缺位置——补上以后换季和总表才算得准。'));
+    wrap.appendChild(el('div','hint','每件下面标了缺什么（缺品类 / 缺季节 / 缺场合 / 缺位置），点「分类」或点行补上。'));
     wrap.appendChild(buildCart(null, noInfo));
   }
   syncBatchBar();
@@ -1258,13 +1258,23 @@ function buildCart(title, list){
     const line2 = [ (it.season||[]).join('/'), (it.scene||[]).join('/'), it.wear,
       l? locText(l) : '在外', it.boughtAt? '购'+it.boughtAt : '', it.retiredAt? '淘汰'+it.retiredAt : ''
     ].filter(Boolean).join(' · ');
+    const miss = [];
+    if(it.cat==='待分类') miss.push('缺品类');
+    if(!(it.season||[]).length) miss.push('缺季节');
+    if(!(it.scene||[]).length) miss.push('缺场合');
+    if(!it.locId) miss.push('缺位置');
     info.innerHTML = '<div class="cname">'+(it.no? '<span style="color:var(--accent);font-size:12px;margin-right:6px">'+esc(it.no)+'</span>':'')+esc(it.name)+'</div>'
       + '<div class="cmeta">'+esc(line1||'还没填品类')+'</div>'
       + '<div class="cmeta">'+esc(line2)+'</div>'
+      + (miss.length? '<div class="cmeta" style="margin-top:4px">'+miss.map(m=>'<span class="tag">'+m+'</span>').join('')+'</div>' : '')
       + (it.pair? '<div class="cmeta">搭配：'+esc(it.pair)+'</div>' : '');
     const act = el('div','cact');
-    const bCls = el('button','mini on','分类');
-    bCls.onclick = (ev)=>{ ev.stopPropagation(); openClassSheet([it.id]); };
+    const bCls = el('button','mini on', it.cat==='待分类' ? '分类' : '补全');
+    bCls.onclick = (ev)=>{
+      ev.stopPropagation();
+      if(it.cat==='待分类') openClassSheet([it.id]);
+      else openItem(it.id);
+    };
     const bDel = el('button','mini','删除');
     bDel.onclick = (ev)=>{ ev.stopPropagation(); armDelete(it, bDel); };
     act.appendChild(bCls); act.appendChild(bDel);
