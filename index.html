@@ -2416,6 +2416,7 @@ function openLocForm(cb, edit){
 
 /* ================= 加一件 ================= */
 let draft = null;
+let buildToday = 0;
 function openAdd(){
   draft = {id:uid(), photo:null, name:'', owner:DB.owner, cat:(DB.owner==='home'?'床品':'上装'), sub:'', sleeve:'', material:'',
            color:'', hex:'#cccccc', desc:'', size:'', boughtAt:'', pair:'', retiredAt:'',
@@ -2424,7 +2425,7 @@ function openAdd(){
 }
 function renderAddSheet(){
   sheet.innerHTML='';
-  sheetHead('加一件');
+  sheetHead(buildToday ? '加一件 · 今天已建 '+buildToday+' 件' : '加一件');
 
   const f0 = el('div','field');
   f0.appendChild(el('div','lab','谁的衣服'));
@@ -2539,6 +2540,15 @@ function renderAddSheet(){
   const cta = el('button','cta','存进衣橱（照片可以后补）');
   cta.onclick = commitDraft;
   sheet.appendChild(cta);
+
+  const cta2 = el('button','cta','保存，继续下一件 →');
+  cta2.style.background = '#fff';
+  cta2.style.color = 'var(--accent)';
+  cta2.style.border = '1.5px solid var(--accent)';
+  cta2.style.marginTop = '10px';
+  cta2.onclick = function(){ draft._loop = true; commitDraft(); };
+  sheet.appendChild(cta2);
+
   mask.classList.add('on');
 }
 function commitDraft(){
@@ -2556,7 +2566,16 @@ function commitDraft(){
     wear: draft.wear || '', reason: draft.wear && draft.wear!=='常穿'? REASONS[0] : '',
     locId: draft.locId||'', status:'在穿', createdAt: Date.now()
   });
-  save(); closeSheet(); renderAll(); toast('存好了 · '+name);
+  const loop = !!draft._loop;
+  save();
+  if(loop){
+    buildToday++;
+    refreshTab();
+    openAdd();                 // 直接进下一件，不用退出再进
+    toast('已存 · 今天第 ' + buildToday + ' 件');
+  }else{
+    closeSheet(); renderAll(); toast('存好了 · '+name);
+  }
 }
 
 /* ================= 拍照 / 批量入库 ================= */
@@ -3406,7 +3425,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '83';
+  const BUILD = '84';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
