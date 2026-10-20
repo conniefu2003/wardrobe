@@ -2800,6 +2800,7 @@ function commitDraft(){
 /* ================= 按类连拍 ================= */
 let shootPreset = null;
 let shootCount = 0;
+let shootInput = 'fileShootMulti';
 function openShoot(){
   const st = {dept:'衣服', cat:'上装', sub:'', season:[], scene:[], locId:'', cond:''};
   if(shootPreset){
@@ -2880,17 +2881,30 @@ function openShoot(){
     f5.appendChild(c5); sheet.appendChild(f5);
 
     const isTouch = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
-    const go = el('button','cta', isTouch
-      ? '开始拍 · ' + st.cat + (st.sub? ' · '+st.sub : '')
-      : '选照片（可多选）· ' + st.cat + (st.sub? ' · '+st.sub : ''));
-    go.onclick = function(){
+    const label = ' · ' + st.cat + (st.sub? ' · '+st.sub : '');
+    const startWith = function(inputId){
       shootPreset = {cat:st.cat, sub:st.sub, season:st.season.slice(), scene:st.scene.slice(), locId:st.locId, cond:st.cond};
+      shootInput = inputId;
       shootCount = 0;
       closeSheet();
-      // 手机上直接调相机；电脑上一批多选，整批归到这一类
-      document.getElementById(isTouch ? 'fileShoot' : 'fileShootMulti').click();
+      document.getElementById(inputId).click();
     };
-    sheet.appendChild(go);
+    if(isTouch){
+      const goAlbum = el('button','cta','📂 从相册选（微信里的图先存相册）'+label);
+      goAlbum.onclick = function(){ startWith('fileShootMulti'); };
+      sheet.appendChild(goAlbum);
+      const goCam = el('button','cta','📷 现在拍'+label);
+      goCam.style.background = '#fff';
+      goCam.style.color = 'var(--accent)';
+      goCam.style.border = '1.5px solid var(--accent)';
+      goCam.style.marginTop = '10px';
+      goCam.onclick = function(){ startWith('fileShoot'); };
+      sheet.appendChild(goCam);
+    }else{
+      const go = el('button','cta','选照片（可多选）'+label);
+      go.onclick = function(){ startWith('fileShootMulti'); };
+      sheet.appendChild(go);
+    }
     mask.classList.add('on');
   };
   draw();
@@ -3432,7 +3446,7 @@ document.getElementById('fileShoot').onchange = e=>{ const fs=e.target.files; e.
 document.getElementById('fileShootMulti').onchange = e=>{ const fs=e.target.files; e.target.value=''; if(fs&&fs.length) shootImport(fs); };
 document.getElementById('fileAlbum').onchange = e=>{ const fs=e.target.files; e.target.value=''; if(fs&&fs.length) importFiles(fs); };
 document.getElementById('quickAgain').onclick = ()=>{
-  if(shootPreset) document.getElementById('fileShoot').click();
+  if(shootPreset) document.getElementById(shootInput || 'fileShootMulti').click();
   else document.getElementById('fileCam').click();
 };
 document.getElementById('quickDone').onclick = ()=>{
@@ -3808,7 +3822,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '93';
+  const BUILD = '94';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
