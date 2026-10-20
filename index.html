@@ -391,36 +391,56 @@
 
 <script>
 /* ================= 常量 ================= */
-/* 品类目录（Connie 定的 11 个，平铺） */
-const CATS = ['上装','下装','外套','连衣裙','睡衣','鞋','包','围巾','帽子','腰带','床品','家居用品'];
-const SUBCATS = {
-  '上装':['T恤','衬衫','Polo衫','卫衣','针织衫','毛衣','马甲','吊带','打底衫'],
-  '下装':['牛仔裤','休闲裤','西装裤','阔腿裤','运动裤','短裤','半身裙','打底裤'],
-  '外套':['风衣','大衣','夹克','羽绒服','棉服','西装外套','开衫','皮衣'],
-  '连衣裙':['连衣裙','吊带裙','背带裙','衬衫裙'],
-  '睡衣':['睡衣套装','睡裙','吊带睡裙','家居服','浴袍','文胸','内裤','袜子'],
-  '鞋':['运动鞋','休闲鞋','皮鞋','靴子','高跟鞋','凉鞋','拖鞋'],
-  '包':['双肩包','单肩包','手提包','斜挎包','钱包','行李箱'],
-  '围巾':['真丝围巾','羊绒围巾','棉麻围巾','披肩'],
-  '帽子':['棒球帽','贝雷帽','针织帽','渔夫帽','遮阳帽'],
-  '腰带':['皮带','细腰带','宽腰封'],
-  '床品':['被子','被套','四件套','枕套','枕头','床单','毯子','床垫套'],
-  '家居用品':['毛巾','浴巾','收纳箱','收纳盒','清洁用品','厨房用品','餐具','装饰摆件','日用品','小家电']
+/* 品类目录：大类 → 品类 → 款式。存一份默认值，实际用 DB.catalog，可随时新增 */
+const DEFAULT_CATALOG = {
+  '衣服': {
+    '上装': ['衬衫','T恤','吊带背心','马甲','薄羊毛衫','打底衫','厚羊毛衫','卫衣','外套','运动服','皮衣','针织外套'],
+    '下装': ['裙子','休闲裤','西裤','牛仔裤','阔腿裤','加绒裤','羊毛裤','运动裤','运动短裤'],
+    '连衣裙': ['连衣裙','吊带裙','背带裙','衬衫裙'],
+    '风衣': ['风衣'],
+    '大衣': ['大衣'],
+    '长羽绒服': ['长羽绒服'],
+    '家居服': ['家居服','睡衣套装','睡裙','浴袍'],
+    '内衣': ['文胸','内裤','袜子','保暖内衣']
+  },
+  '鞋': { '鞋': ['运动鞋','休闲鞋','皮鞋','靴子','高跟鞋','凉鞋','拖鞋'] },
+  '围巾': { '围巾': ['真丝围巾','羊绒围巾','棉麻围巾','披肩'], '帽子': ['棒球帽','贝雷帽','针织帽','渔夫帽','遮阳帽'] },
+  '皮带': { '腰带': ['皮带','细腰带','宽腰封'] },
+  '包': { '包': ['双肩包','单肩包','手提包','斜挎包','钱包','行李箱'] },
+  '床品': { '床品': ['被子','被套','四件套','枕套','枕头','床单','毯子','床垫套'] },
+  '厨房用品': { '厨房用品': ['毛巾','浴巾','餐具','锅具','收纳容器','清洁用品','日用小物'] }
 };
-/* 7 个一级大类（Connie 2026-10-20 确认）：细类仍按原有 12 品类走 */
-const DEPTS7 = {
-  '衣服': ['上装','下装','外套','连衣裙','睡衣'],
-  '鞋': ['鞋'],
-  '围巾': ['围巾','帽子'],
-  '皮带': ['腰带'],
-  '包': ['包'],
-  '床品': ['床品'],
-  '厨房用品': ['家居用品']
-};
-const DEPT7_NAMES = Object.keys(DEPTS7);
-const CAT2DEPT7 = {};
-DEPT7_NAMES.forEach(function(d){ DEPTS7[d].forEach(function(c){ CAT2DEPT7[c] = d; }); });
+let DEPTS7 = {}, DEPT7_NAMES = [], CATS = [], SUBCATS = {}, CAT2DEPT7 = {};
+function rebuildCatalog(){
+  const cat = (DB && DB.catalog) || DEFAULT_CATALOG;
+  DEPTS7 = cat; DEPT7_NAMES = Object.keys(cat);
+  CATS = []; SUBCATS = {}; CAT2DEPT7 = {};
+  DEPT7_NAMES.forEach(function(d){
+    Object.keys(cat[d]).forEach(function(c){
+      CATS.push(c); SUBCATS[c] = cat[d][c].slice(); CAT2DEPT7[c] = d;
+    });
+  });
+  rebuildSub2Cat();
+}
 function dept7Of(cat){ return CAT2DEPT7[cat] || '衣服'; }
+function addCategory(dept, name){
+  if(!DB.catalog) DB.catalog = JSON.parse(JSON.stringify(DEFAULT_CATALOG));
+  if(!DB.catalog[dept]) DB.catalog[dept] = {};
+  if(DB.catalog[dept][name]) return false;
+  DB.catalog[dept][name] = [];
+  rebuildCatalog(); save();
+  return true;
+}
+function addSubcat(cat, name){
+  if(!DB.catalog) DB.catalog = JSON.parse(JSON.stringify(DEFAULT_CATALOG));
+  const dept = dept7Of(cat);
+  if(!DB.catalog[dept] || !DB.catalog[dept][cat]) return false;
+  const arr = DB.catalog[dept][cat];
+  if(arr.indexOf(name) >= 0) return false;
+  arr.push(name);
+  rebuildCatalog(); save();
+  return true;
+}
 const SLEEVES = ['无袖','短袖','中袖','长袖'];
 const MATERIALS = ['棉','麻','真丝','雪纺','羊毛','羊绒','针织','牛仔','涤纶','混纺'];
 const MATERIALS_SHOE = ['牛皮','羊皮','麂皮','帆布','橡胶','合成革','网布','绒面'];
@@ -435,14 +455,17 @@ function materialsFor(cat){
   if(cat==='围巾'||cat==='帽子'||cat==='腰带') return MATERIALS_ACC;
   return MATERIALS;
 }
-/* 旧品类 → 新品类 的兜底映射 */
-const SUB2CAT = {};
-CATS.forEach(function(c){ (SUBCATS[c]||[]).forEach(function(s){ SUB2CAT[s] = c; }); });
+/* 旧品类 → 新品类 的兜底映射（每次重建目录时刷新） */
+let SUB2CAT = {};
+function rebuildSub2Cat(){
+  SUB2CAT = {};
+  CATS.forEach(function(c){ (SUBCATS[c]||[]).forEach(function(s){ SUB2CAT[s] = c; }); });
+}
 const OLD_CAT = {
   '运动鞋':'鞋','休闲鞋':'鞋','皮鞋':'鞋','靴子':'鞋','凉鞋':'鞋','拖鞋':'鞋',
   '双肩包':'包','单肩包':'包','手提包':'包','斜挎包':'包','钱包':'包','行李箱':'包',
   '被子':'床品','被套':'床品','四件套':'床品','枕套':'床品','枕头':'床品','床单':'床品','毯子':'床品','床垫套':'床品',
-  '套装':'上装','家居服':'睡衣','贴身衣物':'睡衣',
+  '套装':'上装','贴身衣物':'内衣',
   '首饰':'围巾','眼镜':'围巾','手套':'围巾'
 };
 const SIZES_CLOTH = ['XS','S','M','L','XL','2XL','3XL','4XL','均码'];
@@ -513,6 +536,7 @@ const HUE = {'红':0,'橙':28,'黄':52,'绿':130,'蓝':212,'紫':272,'粉':332,'
 const KEY = 'wardrobe.v3';
 const BAK = 'wardrobe.bak';
 let DB = {items:[], saved:[], locations:[], gaps:[], owner:'connie', memOnly:false};
+rebuildCatalog();   // 先用默认目录把 CATS/SUBCATS 填上，后续 load 会用库里保存的目录再重建一次
 let view = {dept:'全部', season:'全部', wear:'全部', loc:'全部', cat:'全部', sub:'全部', sleeve:'全部', mat:'全部'};
 let tab = 'wardrobe';
 let searchQ = '';
@@ -582,7 +606,8 @@ function save(){
   if(!DB.loaded && DB.items.length === 0){ updateStoreStatus(); return; }
   const payload = JSON.stringify({
     items:DB.items, saved:DB.saved, locations:DB.locations, gaps:DB.gaps, owner:DB.owner,
-    intakes: DB.intakes || [], tipClosed: DB.tipClosed || false
+    intakes: DB.intakes || [], catalog: DB.catalog || null, cloud: DB.cloud || null,
+    tipClosed: DB.tipClosed || false
   });
   DB.lastSize = payload.length/1048576;
   if(Store.mode==='memory' || Store.mode==='pending'){ DB.memOnly = true; updateStoreStatus(); return; }
@@ -797,6 +822,8 @@ function seasonByMonth(){
   return '春';
 }
 function migrate(){
+  if(!DB.catalog) DB.catalog = JSON.parse(JSON.stringify(DEFAULT_CATALOG));
+  rebuildCatalog();
   DB.items = DB.items || []; DB.saved = DB.saved || [];
   DB.locations = DB.locations || []; DB.gaps = DB.gaps || [];
   DB.locations.forEach(function(l){
@@ -813,12 +840,14 @@ function migrate(){
     DB.boxes = null;
   }
   const omap = {'我':'connie','先生':'daniel','Kevin':'kevin','家':'home','connie':'connie','daniel':'daniel','kevin':'kevin','home':'home'};
+  const catFix = {'外套':'大衣','睡衣':'家居服','家居用品':'厨房用品','帽子':'帽子'};
   DB.items.forEach(it=>{
     it.owner = omap[it.owner] || 'connie';
+    if(catFix[it.cat]) it.cat = catFix[it.cat];
     if(it.cat !== '待分类' && !CATS.includes(it.cat)){
       const target = SUB2CAT[it.cat] || OLD_CAT[it.cat];
       if(SUB2CAT[it.cat] && !it.sub) it.sub = it.cat;
-      it.cat = target || '上装';
+      it.cat = target || CATS[0] || '上装';
     }
     let s = Array.isArray(it.season) ? it.season.slice() : [];
     const flat = [];
@@ -874,6 +903,7 @@ async function load(){
   }
   if(best){
     DB = Object.assign(DB, best.o);
+    if(!DB.catalog) DB.catalog = JSON.parse(JSON.stringify(DEFAULT_CATALOG));
     if(bestName !== '主档'){ toast('从'+bestName+'恢复了数据'); }
   }
   migrate();
@@ -2568,7 +2598,19 @@ function renderAddSheet(){
     b.onclick = ()=>{ draft.cat=c; draft.sub=''; draft.sleeve=''; draft.material=''; renderAddSheet(); };
     c3.appendChild(b);
   });
-  f3.appendChild(c3); sheet.appendChild(f3);
+  f3.appendChild(c3);
+  const addCat = el('div'); addCat.style.cssText='display:flex;gap:8px;margin-top:8px';
+  const icat = el('input'); icat.type='text'; icat.placeholder='新增品类，比如「西装外套」';
+  icat.style.flex='1';
+  const bcat = el('button','mini','＋ 加品类');
+  bcat.onclick = function(){
+    const v = (icat.value||'').trim();
+    if(!v){ toast('先写个名字'); return; }
+    if(addCategory(dept7Of(draft.cat), v)){ draft.cat = v; draft.sub=''; renderAddSheet(); toast('已加品类：'+v); }
+    else toast('这个品类已经有了');
+  };
+  addCat.appendChild(icat); addCat.appendChild(bcat);
+  f3.appendChild(addCat); sheet.appendChild(f3);
 
   const f4 = el('div','field');
   f4.appendChild(el('div','lab','具体款式'));
@@ -2578,7 +2620,20 @@ function renderAddSheet(){
     b.onclick = ()=>{ draft.sub = draft.sub===s?'':s; renderAddSheet(); };
     c4.appendChild(b);
   });
-  f4.appendChild(c4); sheet.appendChild(f4);
+  f4.appendChild(c4);
+  const addSub = el('div'); addSub.style.cssText='display:flex;gap:8px;margin-top:8px';
+  const isub = el('input'); isub.type='text'; isub.placeholder='新增款式，比如「短款风衣」';
+  isub.style.flex='1';
+  const bsub = el('button','mini','＋ 加款式');
+  bsub.onclick = function(){
+    const v = (isub.value||'').trim();
+    if(!v){ toast('先写个名字'); return; }
+    if(addSubcat(draft.cat, v)){ draft.sub = v; renderAddSheet(); toast('已加款式：'+v); }
+    else toast('这个款式已经有了');
+  };
+  addSub.appendChild(isub); addSub.appendChild(bsub);
+  f4.appendChild(addSub);
+  sheet.appendChild(f4);
 
   if(SLEEVE_CATS.includes(draft.cat)){
     const fb = el('div','field');
