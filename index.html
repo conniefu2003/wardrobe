@@ -262,6 +262,7 @@
   <div class="head-in">
     <div class="brand">我的衣橱<small id="brandVer">WARDROBE</small></div>
     <div class="head-spacer"></div>
+    <button class="icon-btn" id="btnAutoBak">自动备份</button>
     <button class="icon-btn" id="btnFind">查找</button>
     <button class="icon-btn" id="btnExport">备份</button>
     <button class="icon-btn" id="btnImport">恢复</button>
@@ -554,6 +555,7 @@ function save(){
     if(ok){
       DB.lastSaved = Date.now();
       Store.set(BAK, payload);          // 影子副本：主档被写坏也有后手
+      writeAutoBackup();                 // 同时写到本机文件（开了的话）
       updateStoreStatus();
       return;
     }
@@ -566,14 +568,65 @@ function save(){
     }
   });
 }
+/* ================= 自动备份到本机文件 ================= */
+let autoFileHandle = null;
+let autoFileState = 'off';   // off / on / need-permission
+async function pickAutoBackupFile(){
+  if(!window.showSaveFilePicker){ toast('这个浏览器不支持选文件，请用 Edge / Chrome 打开'); return; }
+  try{
+    const h = await window.showSaveFilePicker({
+      suggestedName: '我的衣橱_自动备份.json',
+      types: [{ description: 'JSON 备份', accept: {'application/json': ['.json']} }]
+    });
+    autoFileHandle = h;
+    autoFileState = 'on';
+    try{ await Store.set('fsHandle', h); }catch(e){ console.warn('句柄存不下', e); }
+    await writeAutoBackup();
+    toast('已开启：每次修改都会自动写进这个文件');
+    updateStoreStatus();
+  }catch(e){
+    console.warn('选文件失败', e);
+  }
+}
+async function restoreAutoBackupHandle(){
+  try{
+    const h = await Store.get('fsHandle');
+    if(!h || !h.queryPermission) return;
+    autoFileHandle = h;
+    const perm = await h.queryPermission({mode:'readwrite'}).catch(()=> 'prompt');
+    autoFileState = perm === 'granted' ? 'on' : 'need-permission';
+  }catch(e){}
+}
+async function writeAutoBackup(){
+  if(!autoFileHandle) return;
+  try{
+    const payload = JSON.stringify({
+      items:DB.items, saved:DB.saved, locations:DB.locations, gaps:DB.gaps, owner:DB.owner,
+      exportedAt: new Date().toISOString()
+    });
+    const w = await autoFileHandle.createWritable();
+    await w.write(payload);
+    await w.close();
+    DB.lastAutoFile = Date.now();
+    autoFileState = 'on';
+    updateStoreStatus();
+  }catch(e){
+    console.warn('自动备份写入失败', e);
+    autoFileState = 'need-permission';
+    updateStoreStatus();
+  }
+}
 function updateStoreStatus(){
   const elx = document.getElementById('storeStatus');
   if(!elx) return;
   const n = DB.items.length;
   const mode = Store.mode==='idb' ? 'IndexedDB' : Store.mode==='ls' ? 'localStorage' : '内存（关掉就没）';
   const t = DB.lastSaved ? new Date(DB.lastSaved).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) : '—';
-  elx.textContent = '共 '+n+' 件 · ' + mode + ' · 上次保存 ' + t;
-  elx.style.color = (Store.mode==='memory') ? '#c0392b' : 'var(--sub)';
+  const auto = autoFileState==='on' ? '自动备份：开'
+             : autoFileState==='need-permission' ? '自动备份：点「自动备份」重新授权'
+             : '自动备份：关';
+  elx.textContent = '共 '+n+' 件 · ' + mode + ' · 上次保存 ' + t + ' · ' + auto;
+  elx.style.color = (Store.mode==='memory' || autoFileState==='need-permission') ? '#c0392b' : 'var(--sub)';
 }
 
 /* ================= 迁移与默认 ================= */
@@ -2774,6 +2827,7 @@ function doExport(){
 }
 document.getElementById('btnExport').onclick = doExport;
 document.getElementById('btnFind').onclick = openFind;
+document.getElementById('btnAutoBak').onclick = pickAutoBackupFile;
 document.getElementById('btnImport').onclick = ()=> document.getElementById('fileImport').click();
 document.getElementById('fileImport').onchange = e=>{
   const f = e.target.files[0]; e.target.value=''; if(!f) return;
@@ -2969,7 +3023,7 @@ curSeason = seasonByMonth();
 const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '76';
+  const BUILD = '77';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
@@ -2985,7 +3039,8 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
       }).catch(function(){});
   }catch(e){}
 })();
-load().then(mode=>{
+load().then(async mode=>{
+  await restoreAutoBackupHandle();
   renderAll();
   if(mode==='memory'){ DB.memOnly = true; showStoreBanner(); toast('这个浏览器不让存数据，先看顶部提示'); }
   if(WANT_DIAG) runDiag();
