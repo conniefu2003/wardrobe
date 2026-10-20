@@ -429,6 +429,13 @@ const SIZES_CLOTH = ['XS','S','M','L','XL','2XL','3XL','4XL','均码'];
 const SIZES_SHOE  = ['35','36','37','38','39','40','41','42','均码'];
 function sizesFor(cat){ return cat==='鞋' ? SIZES_SHOE : SIZES_CLOTH; }
 const OWNER_CODE = {'connie':'CO','daniel':'DN','kevin':'KV','home':'HM'};
+/* 没拍照时的占位图 */
+const NO_PHOTO = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400">'
+  + '<rect width="300" height="400" fill="#efece6"/>'
+  + '<text x="150" y="200" font-size="22" fill="#b9b2a6" text-anchor="middle" font-family="sans-serif">没有照片</text>'
+  + '<text x="150" y="232" font-size="14" fill="#c8c2b6" text-anchor="middle" font-family="sans-serif">点开可后补</text>'
+  + '</svg>');
 function nextNo(owner){
   const p = OWNER_CODE[owner] || 'CO';
   let mx = 0;
@@ -1166,6 +1173,7 @@ let pendingAll = false;
 /* 缺什么：唯一判据，列表与红色标签共用 */
 function missingOf(it){
   const m = [];
+  if(!it.photo || it.photo === NO_PHOTO) m.push('缺照片');
   if(it.cat==='待分类'){ m.push('缺品类'); return m; }
   if(!(it.season||[]).length) m.push('缺季节');
   if(!(it.scene||[]).length) m.push('缺场合');
@@ -2401,7 +2409,7 @@ function renderAddSheet(){
   const pick = el('div','pick');
   pick.innerHTML = draft.photo
     ? '<img src="'+draft.photo+'" alt="">'
-    : '<div class="tip">点这里拍照或选图<br><span class="sub">白底、平铺、白天拍，取色最准</span></div>';
+    : '<div class="tip">点这里拍照或选图<br><span class="sub">也可以不拍，先按名字存，照片以后再补</span></div>';
   pick.onclick = ()=> document.getElementById('filePick').click();
   f1.appendChild(pick); sheet.appendChild(f1);
 
@@ -2496,17 +2504,16 @@ function renderAddSheet(){
   });
   f7.appendChild(c7); sheet.appendChild(f7);
 
-  const cta = el('button','cta','存进衣橱');
-  cta.disabled = !draft.photo;
+  const cta = el('button','cta','存进衣橱（照片可以后补）');
   cta.onclick = commitDraft;
   sheet.appendChild(cta);
   mask.classList.add('on');
 }
 function commitDraft(){
-  if(!draft.photo){ toast('先加一张照片'); return; }
   const name = (draft.name||'').trim() || (draft.color||'') + (draft.sub||draft.cat||'');
+  if(!draft.photo && !name){ toast('至少写个名字'); return; }
   DB.items.unshift({
-    id: draft.id, photo: draft.photo, name, owner: draft.owner||DB.owner,
+    id: draft.id, photo: draft.photo || NO_PHOTO, name, owner: draft.owner||DB.owner,
     no: nextNo(draft.owner||DB.owner),
     cat: draft.cat, sub: draft.sub, sleeve: draft.sleeve||'', material: draft.material||'',
     desc: draft.desc||'', size: draft.size||'',
@@ -3367,7 +3374,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '81';
+  const BUILD = '82';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
