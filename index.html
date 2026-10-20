@@ -741,24 +741,46 @@ async function cloudPush(silent){
     return false;
   }
 }
-async function cloudPull(){
+async function cloudPull(auto){
   const c = cloudCfg();
-  if(!cloudReady()){ toast('还没配置云端'); return; }
+  if(!cloudReady()){ if(!auto) toast('还没配置云端'); return false; }
   try{
     const r = await fetch(c.url.replace(/\/$/,'') + '/rest/v1/wardrobe?id=eq.' + encodeURIComponent(cloudRoom()) + '&select=payload,updated_at', {headers: cloudHeaders(c)});
     if(!r.ok) throw new Error('HTTP ' + r.status);
     const arr = await r.json();
-    if(!arr.length || !arr[0].payload){ toast('云端还没有数据'); return; }
+    if(!arr.length || !arr[0].payload){ if(!auto) toast('云端还没有数据'); return false; }
     const p = arr[0].payload;
     const n = (p.items||[]).length;
-    if(!confirm('云端有 ' + n + ' 件（更新于 ' + (arr[0].updated_at||'').slice(0,16).replace('T',' ') + '）。\n用云端覆盖本地吗？本地的删改会被覆盖。')) return;
+    if(!n){ if(!auto) toast('云端是空的'); return false; }
+    if(!auto){
+      if(!confirm('云端有 ' + n + ' 件（更新于 ' + (arr[0].updated_at||'').slice(0,16).replace('T',' ') + '）。\n用云端覆盖本地吗？本地的删改会被覆盖。')) return false;
+    }
     DB.items = p.items || []; DB.saved = p.saved || []; DB.locations = p.locations || [];
     DB.gaps = p.gaps || []; DB.intakes = p.intakes || [];
+    DB.lastCloudPull = Date.now();
     migrate(); save(); renderAll();
-    toast('已从云端恢复 ' + DB.items.length + ' 件');
+    toast((auto? '本地是空的，已自动从云端取回 ' : '已从云端恢复 ') + DB.items.length + ' 件');
+    return true;
   }catch(e){
     console.warn('云端下载失败', e);
-    toast('下载失败：' + e.message);
+    if(!auto) toast('下载失败：' + e.message);
+    return false;
+  }
+}
+async function testCloud(){
+  const c = cloudCfg();
+  if(!cloudReady()){ toast('先把上面两项填上再测'); return; }
+  try{
+    const r = await fetch(c.url.replace(/\/$/,'') + '/rest/v1/wardrobe?select=id,updated_at&limit=5', {headers: cloudHeaders(c)});
+    const t = await r.text();
+    if(!r.ok){ alert('连接失败：HTTP ' + r.status + '\n' + t.slice(0,300)); return; }
+    const arr = JSON.parse(t);
+    if(!arr.length){ alert('连上了，但表里还没有数据（第一次上传后才会有一条）。'); return; }
+    const mine = arr.filter(function(x){ return x.id === cloudRoom(); });
+    alert('连上了。表里共 ' + arr.length + ' 条。\n你的同步码「' + cloudRoom() + '」' +
+      (mine.length ? '：有数据，更新于 ' + (mine[0].updated_at||'').slice(0,16).replace('T',' ') : '：还没有数据（可能上传没成功，或同步码不对）'));
+  }catch(e){
+    alert('连接异常：' + e.message);
   }
 }
 function openCloud(){
@@ -797,8 +819,10 @@ function openCloud(){
   const up = el('button','mini on','上传到云端');
   up.onclick = ()=> cloudPush(false);
   const down = el('button','mini','从云端恢复');
-  down.onclick = ()=> cloudPull();
-  row.appendChild(up); row.appendChild(down); sheet.appendChild(row);
+  down.onclick = ()=> cloudPull(false);
+  const test = el('button','mini ghost','测试连接');
+  test.onclick = ()=> testCloud();
+  row.appendChild(up); row.appendChild(down); row.appendChild(test); sheet.appendChild(row);
 
   const f3 = el('div','field');
   f3.appendChild(el('div','lab','第一次用：在 Supabase 的 SQL Editor 里执行这段，建表并放开权限'));
@@ -3822,7 +3846,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '94';
+  const BUILD = '95';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
@@ -3842,6 +3866,11 @@ load().then(async mode=>{
   await restoreAutoBackupHandle();
   renderAll();
   if(mode==='memory'){ DB.memOnly = true; showStoreBanner(); toast('这个浏览器不让存数据，先看顶部提示'); }
+  // 本地是空的、云端配了 → 自动取回来，不用手动点
+  if(!DB.items.length && cloudReady()){
+    try{ await cloudPull(true); }catch(e){ console.warn(e); }
+    if(!WANT_DIAG && !WANT_TEST) renderAll();
+  }
   if(WANT_DIAG) runDiag();
   if(WANT_TEST) runSelfTest();
 }).catch(err=>{
