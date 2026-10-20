@@ -297,6 +297,7 @@
     <div id="tipbar">
       <b>照片进来</b>
       <span id="tipText">拖拽 / Ctrl+V 粘贴 / 点右下「选照片」，三种都行，可一次多张。</span>
+      <button class="mini ghost" id="tipInstall">加到桌面</button>
       <button class="mini ghost" id="tipClose">不再提示</button>
     </div>
     <div class="frow"><span class="fl">季节</span><div class="chips xs" id="fSeason"></div></div>
@@ -3947,6 +3948,37 @@ if(tipClose) tipClose.onclick = ()=>{
   DB.tipClosed = true; save();
   document.getElementById('tipbar').classList.add('hide');
 };
+const tipInstall = document.getElementById('tipInstall');
+if(tipInstall) tipInstall.onclick = ()=>{
+  const ua = (navigator && navigator.userAgent) || '';
+  const uc = /UCBrowser|UCWEB/i.test(ua);
+  const ios = /iPhone|iPad|iPod/i.test(ua);
+  const android = /Android/i.test(ua);
+  let msg;
+  if(uc){
+    msg = 'UC 本身不支持「安装」，但可以加个桌面快捷方式：\n\n'
+      + '1) 点 UC 底部或右上角的「菜单」（三横线）\n'
+      + '2) 找「添加到桌面」或「添加到主屏幕」\n'
+      + '3) 桌面上会出现一个图标，点它直接进衣橱\n\n'
+      + '如果 UC 没有这一项：先「添加书签」，再从手机桌面的浏览器书签/快捷方式里打开。\n\n'
+      + '小提示：UC 有时会清掉网页数据。录完一类就点一次右上「备份」，导出的文件在「下载」里。';
+  }else if(ios){
+    msg = 'iPhone 上要用 Safari：\n\n'
+      + '1) 用 Safari 打开这个网址\n'
+      + '2) 点底部中间的分享按钮（方框向上箭头）\n'
+      + '3) 往下找「添加到主屏幕」→ 添加\n\n'
+      + '装好后从桌面图标打开，是全屏的，跟 App 一样。';
+  }else if(android){
+    msg = '安卓上用 Chrome 或手机自带浏览器：\n\n'
+      + '1) 打开这个网址\n'
+      + '2) 点右上角「⋮」\n'
+      + '3) 选「安装应用」或「添加到主屏幕」\n\n'
+      + 'UC 没有这个功能，但可以用 UC 菜单里的「添加到桌面」生成快捷方式。';
+  }else{
+    msg = '电脑上不用装，直接双击桌面那个「我的衣橱」图标就行。';
+  }
+  alert(msg);
+};
 
 function showStoreBanner(){
   const bar = document.getElementById('warnbar');
@@ -3979,7 +4011,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '99';
+  const BUILD = '100';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
