@@ -262,6 +262,7 @@
   <div class="head-in">
     <div class="brand">我的衣橱<small id="brandVer">WARDROBE</small></div>
     <div class="head-spacer"></div>
+    <button class="icon-btn" id="btnCloud">云端</button>
     <button class="icon-btn" id="btnAutoBak">自动备份</button>
     <button class="icon-btn" id="btnFind">查找</button>
     <button class="icon-btn" id="btnExport">备份</button>
@@ -590,6 +591,7 @@ function save(){
       DB.lastSaved = Date.now();
       Store.set(BAK, payload);          // 影子副本：主档被写坏也有后手
       scheduleAutoBackup();              // 同时写到本机文件（开了的话，节流 3 秒）
+      scheduleCloudPush();               // 云端开了就推一份（节流 10 秒）
       updateStoreStatus();
       return;
     }
@@ -656,6 +658,119 @@ async function writeAutoBackup(){
     updateStoreStatus();
   }
 }
+/* ================= 云端同步（Supabase 快照） ================= */
+const CLOUD_SQL = "create table if not exists wardrobe (id text primary key, payload jsonb, updated_at timestamptz default now());\n"
+  + "alter table wardrobe enable row level security;\n"
+  + "create policy \"allow anon all\" on wardrobe for all using (true) with check (true);";
+function cloudCfg(){ return DB.cloud || null; }
+function cloudReady(){ const c = cloudCfg(); return !!(c && c.url && c.key); }
+function cloudHeaders(c){
+  return {
+    'apikey': c.key,
+    'Authorization': 'Bearer ' + c.key,
+    'Content-Type': 'application/json',
+    'Prefer': 'resolution=merge-duplicates'
+  };
+}
+async function cloudPush(silent){
+  const c = cloudCfg();
+  if(!cloudReady()){ if(!silent) toast('还没配置云端'); return false; }
+  const payload = {
+    items: DB.items, saved: DB.saved, locations: DB.locations, gaps: DB.gaps,
+    intakes: DB.intakes || [], owner: DB.owner, pushedAt: new Date().toISOString()
+  };
+  try{
+    const r = await fetch(c.url.replace(/\/$/,'') + '/rest/v1/wardrobe', {
+      method:'POST', headers: cloudHeaders(c),
+      body: JSON.stringify([{ id:'main', payload: payload, updated_at: new Date().toISOString() }])
+    });
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    DB.lastCloud = Date.now();
+    if(!silent) toast('已上传到云端');
+    updateStoreStatus();
+    return true;
+  }catch(e){
+    console.warn('云端上传失败', e);
+    if(!silent) toast('上传失败：' + e.message);
+    return false;
+  }
+}
+async function cloudPull(){
+  const c = cloudCfg();
+  if(!cloudReady()){ toast('还没配置云端'); return; }
+  try{
+    const r = await fetch(c.url.replace(/\/$/,'') + '/rest/v1/wardrobe?id=eq.main&select=payload,updated_at', {headers: cloudHeaders(c)});
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const arr = await r.json();
+    if(!arr.length || !arr[0].payload){ toast('云端还没有数据'); return; }
+    const p = arr[0].payload;
+    const n = (p.items||[]).length;
+    if(!confirm('云端有 ' + n + ' 件（更新于 ' + (arr[0].updated_at||'').slice(0,16).replace('T',' ') + '）。\n用云端覆盖本地吗？本地的删改会被覆盖。')) return;
+    DB.items = p.items || []; DB.saved = p.saved || []; DB.locations = p.locations || [];
+    DB.gaps = p.gaps || []; DB.intakes = p.intakes || [];
+    migrate(); save(); renderAll();
+    toast('已从云端恢复 ' + DB.items.length + ' 件');
+  }catch(e){
+    console.warn('云端下载失败', e);
+    toast('下载失败：' + e.message);
+  }
+}
+function openCloud(){
+  sheet.innerHTML=''; sheetHead('云端同步');
+  const c = cloudCfg() || {url:'', key:'', auto:true};
+
+  const f1 = el('div','field');
+  f1.appendChild(el('div','lab','Supabase Project URL（形如 https://xxx.supabase.co）'));
+  const i1 = el('input',''); i1.type='text'; i1.value = c.url||''; i1.placeholder='https://xxxx.supabase.co';
+  f1.appendChild(i1); sheet.appendChild(f1);
+
+  const f2 = el('div','field');
+  f2.appendChild(el('div','lab','anon public key（一长串，公开可用，不是密码）'));
+  const i2 = el('input'); i2.type='text'; i2.value = c.key||''; i2.placeholder='eyJhbGciOi...';
+  f2.appendChild(i2); sheet.appendChild(f2);
+
+  const save1 = el('button','cta','保存配置');
+  save1.onclick = ()=>{
+    DB.cloud = {url:(i1.value||'').trim(), key:(i2.value||'').trim(), auto:true};
+    save(); toast('已保存'); updateStoreStatus();
+  };
+  sheet.appendChild(save1);
+
+  const row = el('div','outfit-actions'); row.style.marginTop='12px';
+  const up = el('button','mini on','上传到云端');
+  up.onclick = ()=> cloudPush(false);
+  const down = el('button','mini','从云端恢复');
+  down.onclick = ()=> cloudPull();
+  row.appendChild(up); row.appendChild(down); sheet.appendChild(row);
+
+  const f3 = el('div','field');
+  f3.appendChild(el('div','lab','第一次用：在 Supabase 的 SQL Editor 里执行这段，建表并放开权限'));
+  const sq = el('div','why');
+  sq.style.whiteSpace = 'pre-wrap';
+  sq.style.fontFamily = 'monospace';
+  sq.style.fontSize = '12px';
+  sq.textContent = CLOUD_SQL;
+  f3.appendChild(sq);
+  const copy = el('button','mini','复制 SQL');
+  copy.onclick = ()=>{
+    try{ navigator.clipboard.writeText(CLOUD_SQL); toast('已复制'); }
+    catch(e){ toast('复制失败，手动选中上面的文字'); }
+  };
+  f3.appendChild(copy); sheet.appendChild(f3);
+
+  const note = el('div','hint');
+  note.textContent = '配置保存后，每次改动会自动往云端推一份（10 秒内合并写入）。三台设备都用同一份配置，看到的就是同一批东西。';
+  sheet.appendChild(note);
+  mask.classList.add('on');
+}
+
+let cloudTimer = null;
+function scheduleCloudPush(){
+  if(!cloudReady()) return;
+  clearTimeout(cloudTimer);
+  cloudTimer = setTimeout(function(){ cloudPush(true); }, 10000);
+}
+
 function updateStoreStatus(){
   const elx = document.getElementById('storeStatus');
   if(!elx) return;
@@ -666,7 +781,10 @@ function updateStoreStatus(){
              : autoFileState==='need-permission' ? '自动备份：点「自动备份」重新授权'
              : '自动备份：关';
   const sz = DB.lastSize ? ' · ' + DB.lastSize.toFixed(1) + 'MB' : '';
-  elx.textContent = '共 '+n+' 件' + sz + ' · ' + mode + ' · 上次保存 ' + t + ' · ' + auto;
+  const cloud = cloudReady()
+    ? (DB.lastCloud ? ' · 云端 ' + new Date(DB.lastCloud).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) : ' · 云端已配')
+    : ' · 云端未配';
+  elx.textContent = '共 '+n+' 件' + sz + ' · ' + mode + ' · 上次保存 ' + t + ' · ' + auto + cloud;
   elx.style.color = (Store.mode==='memory' || autoFileState==='need-permission') ? '#c0392b' : 'var(--sub)';
 }
 
@@ -3201,6 +3319,7 @@ function doExport(){
 document.getElementById('btnExport').onclick = doExport;
 document.getElementById('btnFind').onclick = openFind;
 document.getElementById('btnAutoBak').onclick = pickAutoBackupFile;
+document.getElementById('btnCloud').onclick = openCloud;
 document.getElementById('btnImport').onclick = ()=> document.getElementById('fileImport').click();
 document.getElementById('fileImport').onchange = e=>{
   const f = e.target.files[0]; e.target.value=''; if(!f) return;
@@ -3439,7 +3558,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '87';
+  const BUILD = '88';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
