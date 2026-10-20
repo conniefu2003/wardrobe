@@ -252,7 +252,17 @@
     .piece{width:88px}.piece .ph{width:88px;height:112px}
     .grid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px}
     nav.tabs button{font-size:13px}
-    .who button{font-size:13px}
+    .who button{font-size:12px;padding:8px 0}
+    /* 窄屏：标题一行，按钮换行铺满，不再挤出画面 */
+    .head-in{flex-wrap:wrap;padding:10px 14px 6px;gap:8px}
+    .head-in .brand{flex:1 1 100%}
+    .head-in .head-spacer{display:none}
+    .icon-btn{flex:1 1 auto;min-width:0;padding:7px 6px;font-size:12px;text-align:center}
+    #fabWrap{gap:6px;bottom:16px;right:14px}
+    #fab{padding:12px 18px;font-size:14px}
+    .fab-mini{padding:7px 13px;font-size:12.5px}
+    .cartbar .mini{font-size:12px;padding:6px 10px}
+    .sheet{padding:8px 14px 22px}
   }
 </style>
 </head>
@@ -3704,9 +3714,38 @@ document.getElementById('fab').onclick = ()=> document.getElementById('fileCam')
 document.getElementById('fabAlbum').onclick = ()=> document.getElementById('fileAlbum').click();
 document.getElementById('fabShoot').onclick = openShoot;
 document.getElementById('fabManual').onclick = openAdd;
+function openAddMenu(){
+  sheet.innerHTML=''; sheetHead('加东西');
+  const opts = [
+    ['📸 按类连拍（一群同类，最省事）', openShoot],
+    ['📷 拍照（单张，回头补分类）', function(){ document.getElementById('fileCam').click(); }],
+    ['🖼 从相册选（可多张）', function(){ document.getElementById('fileAlbum').click(); }],
+    ['✏️ 手动加一件（可后补照片）', openAdd]
+  ];
+  opts.forEach(function(o){
+    const b = el('button','cta',o[0]);
+    b.style.background='#fff';
+    b.style.color='var(--ink)';
+    b.style.border='1px solid var(--line)';
+    b.style.marginTop='10px';
+    b.onclick = function(){ closeSheet(); o[1](); };
+    sheet.appendChild(b);
+  });
+  mask.classList.add('on');
+}
 (function(){
   const touch = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
-  if(touch) return;
+  if(touch){
+    // 手机上把四个按钮收成一个，避免挡住列表
+    ['fabManual','fabAlbum','fabShoot'].forEach(function(id){
+      const b = document.getElementById(id); if(b) b.style.display='none';
+    });
+    const fb = document.getElementById('fab');
+    if(fb){ fb.textContent = '＋ 加东西'; fb.onclick = openAddMenu; }
+    const tp = document.getElementById('tipText');
+    if(tp) tp.textContent = '点右下「＋ 加东西」，按类连拍最省事，一整类只选一次。';
+    return;
+  }
   const fb = document.getElementById('fab');
   if(fb){ fb.textContent = '🖼 选照片'; fb.onclick = ()=> document.getElementById('fileAlbum').click(); }
   const ab = document.getElementById('fabAlbum'); if(ab) ab.style.display='none';
@@ -3750,7 +3789,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '90';
+  const BUILD = '91';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
