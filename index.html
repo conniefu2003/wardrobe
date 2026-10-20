@@ -1242,7 +1242,12 @@ function renderWardrobe(){
   // 品类（随大类收窄）
   const uncat = DB.items.filter(i=>i.owner===DB.owner && i.cat==='待分类').length;
   let catPool = CATS;
-  if(view.dept && view.dept!=='全部') catPool = DEPTS7[view.dept] || CATS;
+  if(view.dept && view.dept!=='全部'){
+    const k = Object.keys(DEPTS7[view.dept] || {});
+    catPool = k.length ? k : CATS;
+  }
+  // 换了大类之后，原来选的品类可能不在这一类里，自动回到「全部」
+  if(view.cat!=='全部' && view.cat!=='待分类' && catPool.indexOf(view.cat)<0) view.cat='全部';
   const cats = ['全部', ...catPool].concat(uncat?['待分类']:[]);
   chipRow('fCat', '品类', cats, view.cat, v=>{ view.cat=v; view.sub='全部'; view.sleeve='全部'; view.mat='全部'; });
   // 款式
@@ -3053,6 +3058,38 @@ function collectFiles(dt){
   }
   return out;
 }
+/* 拖一整个文件夹进来：递归读里面的图片 */
+async function collectFromEntries(dt){
+  const entries = [];
+  if(!dt || !dt.items) return entries;
+  for(let i=0;i<dt.items.length;i++){
+    const it = dt.items[i];
+    const en = it && it.webkitGetAsEntry ? it.webkitGetAsEntry() : null;
+    if(en) entries.push(en);
+  }
+  if(!entries.length) return [];
+  const readDir = async function(entryReader){
+    const reader = entryReader.createReader();
+    let all = [];
+    let batch;
+    do{
+      batch = await new Promise(function(res, rej){ reader.readEntries(res, rej); });
+      all = all.concat(batch);
+    }while(batch.length);
+    let files = [];
+    for(const e of all){
+      if(e.isFile) files.push(await new Promise(function(res, rej){ e.file(res, rej); }));
+      else if(e.isDirectory) files = files.concat(await readDir(e));
+    }
+    return files;
+  };
+  let out = [];
+  for(const en of entries){
+    if(en.isFile) out.push(await new Promise(function(res, rej){ en.file(res, rej); }));
+    else if(en.isDirectory) out = out.concat(await readDir(en));
+  }
+  return out.filter(function(f){ return !f.type || /^image\//.test(f.type); });
+}
 function importFromUrl(url){
   quickMsg('正在读这张图…','');
   const img = new Image();
@@ -3092,11 +3129,18 @@ window.addEventListener('dragleave', e=>{
   dragDepth = Math.max(0, dragDepth-1);
   if(dragDepth===0) dropHint(false);
 });
-window.addEventListener('drop', e=>{
+window.addEventListener('drop', async e=>{
   e.preventDefault();
   dragDepth=0; dropHint(false);
-  const files = collectFiles(e.dataTransfer);
-  if(files.length){ importFiles(files); return; }
+  // 先按文件夹递归读；读不到再按普通文件列表
+  let files = [];
+  try{ files = await collectFromEntries(e.dataTransfer); }catch(err){ console.warn(err); }
+  if(!files.length) files = collectFiles(e.dataTransfer);
+  if(files.length){
+    if(shootPreset) shootImport(files);   // 按类连拍锁着分类时，整批归到这一类
+    else importFiles(files);
+    return;
+  }
   quickMsg('没读到图片','从微信直接拖的，先「另存为」或存到相册再试');
 });
 
@@ -3911,7 +3955,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '97';
+  const BUILD = '98';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
