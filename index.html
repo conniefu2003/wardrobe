@@ -1283,7 +1283,7 @@ function renderWardrobe(){
   renderGrid();
 }
 function filteredItems(){
-  let list = DB.items.filter(i=>i.owner===DB.owner);
+  let list = ownerAll ? DB.items.slice() : DB.items.filter(i=>i.owner===DB.owner);
   if(view.season!=='全部') list = list.filter(i=>(i.season||[]).includes(view.season));
   if(view.wear!=='全部') list = list.filter(i=>i.wear===view.wear);
   if(view.loc==='在外') list = list.filter(i=>!isStored(i));
@@ -1308,13 +1308,36 @@ function renderGrid(){
 
   const stat = document.getElementById('gridStat');
   if(stat){
-    const total = DB.items.filter(i=>i.owner===DB.owner).length;
-    stat.textContent = ownerName(DB.owner)+'的衣橱 · 共 '+total+' 件，当前显示 '+list.length+' 件'
+    const total = ownerAll ? DB.items.length : DB.items.filter(i=>i.owner===DB.owner).length;
+    stat.textContent = (ownerAll ? '全部人的衣橱' : ownerName(DB.owner)+'的衣橱') + ' · 共 '+total+' 件，当前显示 '+list.length+' 件'
       + (total===0? '（还没有衣服，点右下角加）' : '');
   }
 
   if(!list.length){
-    const total = DB.items.filter(i=>i.owner===DB.owner).length;
+    const total = ownerAll ? DB.items.length : DB.items.filter(i=>i.owner===DB.owner).length;
+    // 这里空、别处有 → 直接给出口，别让人以为数据没了
+    if(!total && !ownerAll){
+      const others = OWNERS.filter(function(o){
+        return o[0]!==DB.owner && DB.items.some(function(i){ return i.owner===o[0]; });
+      });
+      if(others.length){
+        const c1 = el('div','card'); c1.style.padding='22px';
+        c1.innerHTML = '<div style="font-weight:700;font-size:15px;margin-bottom:8px">这个衣橱是空的，但别处有东西</div>'
+          + '<div class="sub">' + others.map(function(o){
+              const n = DB.items.filter(function(i){ return i.owner===o[0]; }).length;
+              return esc(o[1]) + ' ' + n + ' 件';
+            }).join('　·　') + '</div>';
+        const b1 = el('button','mini on','看全部 '+DB.items.length+' 件');
+        b1.style.marginTop='12px';
+        b1.onclick = function(){
+          ownerAll = true; pendingAll = false;
+          view = {dept:'全部', season:'全部', wear:'全部', loc:'全部', cat:'全部', sub:'全部', sleeve:'全部', mat:'全部'};
+          renderAll();
+        };
+        c1.appendChild(b1);
+        wrap.appendChild(c1);
+      }
+    }
     if(!total){
       const c0 = el('div','card'); c0.style.padding='26px 22px';
       c0.innerHTML = '<div style="font-weight:700;font-size:16px;margin-bottom:10px">三步就能用起来</div>'
@@ -1381,6 +1404,7 @@ function renderGrid(){
 /* ================= 渲染：新进待处理 ================= */
 let cartRefresh = function(){ renderTable(); };
 let pendingAll = false;
+let ownerAll = false;
 /* 缺什么：唯一判据，列表与红色标签共用 */
 function missingOf(it){
   const m = [];
@@ -3724,14 +3748,25 @@ function renderOwnerBox(){
   const box = document.getElementById('whoBox');
   if(!box) return;
   box.innerHTML='';
+  const totalAll = DB.items.filter(function(i){ return !i.retiredAt; }).length;
+  const ab = el('button', (ownerAll && !pendingAll) ? 'on':'', '全部 ' + totalAll);
+  ab.dataset.owner = '__all__';
+  ab.onclick = function(){
+    ownerAll = true; pendingAll = false;
+    view = {dept:'全部', season:'全部', wear:'全部', loc:'全部', cat:'全部', sub:'全部', sleeve:'全部', mat:'全部'};
+    searchQ='';
+    const s = document.getElementById('fSearch'); if(s) s.value='';
+    renderAll();
+  };
+  box.appendChild(ab);
   OWNERS.forEach(function(x){
     const n = DB.items.filter(function(i){ return i.owner===x[0] && !i.retiredAt; }).length;
-    const b = el('button', (DB.owner===x[0] && !pendingAll) ? 'on':'', x[1] + ' ' + n);
+    const b = el('button', (DB.owner===x[0] && !pendingAll && !ownerAll) ? 'on':'', x[1] + ' ' + n);
     b.dataset.owner = x[0];
     b.onclick = function(){
-      pendingAll = false;
+      pendingAll = false; ownerAll = false;
       DB.owner = x[0]; save();
-      view = {season:'全部', wear:'全部', loc:'全部', cat:'全部', sub:'全部', sleeve:'全部', mat:'全部'};
+      view = {dept:'全部', season:'全部', wear:'全部', loc:'全部', cat:'全部', sub:'全部', sleeve:'全部', mat:'全部'};
       searchQ='';
       const s = document.getElementById('fSearch'); if(s) s.value='';
       renderAll();
@@ -3846,7 +3881,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '95';
+  const BUILD = '96';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
