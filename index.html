@@ -2417,10 +2417,13 @@ function openLocForm(cb, edit){
 /* ================= 加一件 ================= */
 let draft = null;
 let buildToday = 0;
+let lastBuild = {locId:'', cond:'', cat:'上装', season:[], scene:[]};
 function openAdd(){
-  draft = {id:uid(), photo:null, name:'', owner:DB.owner, cat:(DB.owner==='home'?'床品':'上装'), sub:'', sleeve:'', material:'',
+  draft = {id:uid(), photo:null, name:'', owner:DB.owner,
+           cat: lastBuild.cat || (DB.owner==='home'?'床品':'上装'), sub:'', sleeve:'', material:'',
            color:'', hex:'#cccccc', desc:'', size:'', boughtAt:'', pair:'', retiredAt:'',
-           season:[], scene:[], wear:'', locId:''};
+           season:(lastBuild.season||[]).slice(), scene:(lastBuild.scene||[]).slice(),
+           wear:'', locId: lastBuild.locId || '', cond: lastBuild.cond || ''};
   renderAddSheet();
 }
 function renderAddSheet(){
@@ -2537,6 +2540,34 @@ function renderAddSheet(){
   });
   f7.appendChild(c7); sheet.appendChild(f7);
 
+  // 位置：建档时就要定，找东西全靠它
+  const f8 = el('div','field');
+  f8.appendChild(el('div','lab','放在哪'));
+  const c8 = el('div','chips');
+  const b8 = el('button','chip'+(!draft.locId?' on':''), '在外');
+  b8.onclick = ()=>{ draft.locId=''; renderAddSheet(); };
+  c8.appendChild(b8);
+  DB.locations.filter(function(l){ return !l.owner || l.owner===DB.owner; }).forEach(function(l){
+    const b = el('button','chip'+(draft.locId===l.id?' on':''), locText(l));
+    b.onclick = ()=>{ draft.locId=l.id; renderAddSheet(); };
+    c8.appendChild(b);
+  });
+  const b8n = el('button','chip','＋ 新位置');
+  b8n.onclick = ()=> openLocForm(function(nl){ draft.locId=nl.id; renderAddSheet(); });
+  c8.appendChild(b8n);
+  f8.appendChild(c8); sheet.appendChild(f8);
+
+  // 新旧
+  const f9 = el('div','field');
+  f9.appendChild(el('div','lab','新旧'));
+  const c9 = el('div','chips');
+  CONDS.forEach(function(k){
+    const b = el('button','chip'+(draft.cond===k?' on':''), k);
+    b.onclick = ()=>{ draft.cond = draft.cond===k?'':k; renderAddSheet(); };
+    c9.appendChild(b);
+  });
+  f9.appendChild(c9); sheet.appendChild(f9);
+
   const cta = el('button','cta','存进衣橱（照片可以后补）');
   cta.onclick = commitDraft;
   sheet.appendChild(cta);
@@ -2558,6 +2589,7 @@ function commitDraft(){
     id: draft.id, photo: draft.photo || NO_PHOTO, name, owner: draft.owner||DB.owner,
     no: nextNo(draft.owner||DB.owner),
     cat: draft.cat, sub: draft.sub, sleeve: draft.sleeve||'', material: draft.material||'',
+    cond: draft.cond || '',
     desc: draft.desc||'', size: draft.size||'',
     boughtAt: draft.boughtAt||'', pair: draft.pair||'', retiredAt: '',
     color: draft.color||'灰', hex: draft.hex||'#9b9b9b',
@@ -2567,6 +2599,8 @@ function commitDraft(){
     locId: draft.locId||'', status:'在穿', createdAt: Date.now()
   });
   const loop = !!draft._loop;
+  lastBuild = {locId:draft.locId||'', cond:draft.cond||'', cat:draft.cat||'上装',
+               season:(draft.season||[]).slice(), scene:(draft.scene||[]).slice()};
   save();
   if(loop){
     buildToday++;
@@ -3425,7 +3459,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '84';
+  const BUILD = '85';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
