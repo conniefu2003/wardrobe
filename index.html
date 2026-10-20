@@ -2662,7 +2662,7 @@ let buildToday = 0;
 let lastBuild = {locId:'', cond:'', cat:'上装', season:[], scene:[]};
 function openAdd(){
   draft = {id:uid(), photo:null, name:'', owner:DB.owner,
-           cat: lastBuild.cat || (DB.owner==='home'?'床品':'上装'), sub:'', sleeve:'', material:'',
+           cat: lastBuild.cat || '上装', sub:'', sleeve:'', material:'',
            color:'', hex:'#cccccc', desc:'', size:'', boughtAt:'', pair:'', retiredAt:'',
            season:(lastBuild.season||[]).slice(), scene:(lastBuild.scene||[]).slice(),
            wear:'', locId: lastBuild.locId || '', cond: lastBuild.cond || ''};
@@ -3219,11 +3219,25 @@ document.getElementById('bClass').onclick = ()=>{
 
 /* 批量处理：品类/款式/季节/场合/频率/位置 一次设完 */
 function openClassSheet(ids, after){
-  const st = {cat:null, sub:null, material:null, cond:null, season:null, scene:null, wear:null, locId:null, locSet:false,
+  const st = {owner:null, cat:null, sub:null, material:null, cond:null, season:null, scene:null, wear:null, locId:null, locSet:false,
               retire:null, retireReason:''};
   const draw = ()=>{
     sheet.innerHTML=''; sheetHead('批量处理 · '+ids.length+' 件');
     sheet.appendChild(el('div','hint','只改你点过的项，没点的保持原样。'));
+
+    // 归属：把选中的东西挪到别人的衣橱
+    const f0 = el('div','field');
+    f0.appendChild(el('div','lab','归属'));
+    const row0 = el('div','chips');
+    const n0 = el('button','chip'+(st.owner===null?' on':''), '不改');
+    n0.onclick = ()=>{ st.owner=null; draw(); };
+    row0.appendChild(n0);
+    OWNERS.forEach(function(o){
+      const b = el('button','chip'+(st.owner===o[0]?' on':''), o[1]);
+      b.onclick = ()=>{ st.owner=o[0]; draw(); };
+      row0.appendChild(b);
+    });
+    f0.appendChild(row0); sheet.appendChild(f0);
 
     // 品类
     const f1 = el('div','field');
@@ -3417,6 +3431,7 @@ function openClassSheet(ids, after){
           else if(it.sub && (SUBCATS[st.cat]||[]).indexOf(it.sub) < 0) it.sub = '';
           if(/^待分类/.test(it.name) || !it.name) it.name = (it.color||'') + (it.sub||st.cat);
         }
+        if(st.owner){ it.owner = st.owner; }
         if(st.season) it.season = st.season.slice();
         if(st.scene) it.scene = st.scene.slice();
         if(st.material) it.material = st.material;
@@ -4017,7 +4032,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '101';
+  const BUILD = '102';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
