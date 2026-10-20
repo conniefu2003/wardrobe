@@ -717,10 +717,17 @@ async function cloudPush(silent){
     items: DB.items, saved: DB.saved, locations: DB.locations, gaps: DB.gaps,
     intakes: DB.intakes || [], owner: DB.owner, pushedAt: new Date().toISOString()
   };
+  const bodyStr = JSON.stringify([{ id: cloudRoom(), payload: payload, updated_at: new Date().toISOString() }]);
+  const mb = bodyStr.length / 1048576;
+  if(mb > 6){
+    if(!silent) toast('数据已 ' + mb.toFixed(1) + 'MB，这次没推：请在 Supabase 里把单条限制调大，或改用「备份」导出文件');
+    else if(!DB.cloudWarned){ DB.cloudWarned = true; toast('云端单次上限约 6MB，已暂停自动上传；点「云端」可手动上传或改用文件备份'); }
+    return false;
+  }
   try{
     const r = await fetch(c.url.replace(/\/$/,'') + '/rest/v1/wardrobe', {
       method:'POST', headers: cloudHeaders(c),
-      body: JSON.stringify([{ id: cloudRoom(), payload: payload, updated_at: new Date().toISOString() }])
+      body: bodyStr
     });
     if(!r.ok) throw new Error('HTTP ' + r.status);
     DB.lastCloud = Date.now();
@@ -3653,13 +3660,16 @@ function showTab(t){
   if(window.scrollTo) window.scrollTo(0,0);
 }
 function renderAll(){
+  /* 只重画当前这一页：几百件之后，五页全画会把浏览器拖住。
+     其它页在切换时由 showTab 现画，数据不会不一致。 */
   renderOwnerBox();
   renderSeasonPickers();
-  renderWardrobe();
-  renderPending();
-  renderTable();
-  renderSeasonPlan();
-  renderLists();
+  if(tab==='wardrobe') renderWardrobe();
+  else if(tab==='pending') renderPending();
+  else if(tab==='table') renderTable();
+  else if(tab==='season') renderSeasonPlan();
+  else if(tab==='lists') renderLists();
+  else renderWardrobe();
   applyTipState();
   updateStoreStatus();
 }
@@ -3789,7 +3799,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '91';
+  const BUILD = '92';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
