@@ -331,6 +331,9 @@
 
   <!-- 清单 -->
   <section id="tab-lists" hidden>
+    <div class="frow"><span class="fl">分类看</span><div class="chips xs" id="listModeChips"></div></div>
+    <div id="listGroups"></div>
+
     <div class="sec"><h2>重复与过期</h2><span class="cnt warn" id="cAudit">0</span><span class="sp"></span></div>
     <div class="hint" style="margin:-4px 2px 12px">同类超过 3 件的、计划淘汰日期已过的——这些都该处理掉，别再买了。</div>
     <div id="auditWrap"></div>
@@ -442,6 +445,7 @@ const SEASONS = ['春','夏','秋','冬'];
 const OWNERS = [['connie','Connie衣橱'],['daniel','Daniel衣橱'],['kevin','Kevin衣橱'],['home','床品']];
 const WEARS = ['常穿','偶尔穿','从未穿'];
 const SCENES = ['正装','通勤','休闲','运动','家居'];
+const CONDS = ['全新','良好','旧','待修'];
 /* 换季时间点：一年四次，按需改 */
 const SWAPS = [
   {m:3,  d:10, from:'冬', to:'春', label:'3月上旬'},
@@ -551,7 +555,7 @@ function save(){
   if(!DB.loaded && DB.items.length === 0){ updateStoreStatus(); return; }
   const payload = JSON.stringify({
     items:DB.items, saved:DB.saved, locations:DB.locations, gaps:DB.gaps, owner:DB.owner,
-    tipClosed: DB.tipClosed || false
+    intakes: DB.intakes || [], tipClosed: DB.tipClosed || false
   });
   DB.lastSize = payload.length/1048576;
   if(Store.mode==='memory' || Store.mode==='pending'){ DB.memOnly = true; updateStoreStatus(); return; }
@@ -689,6 +693,7 @@ function migrate(){
     it.retireReason = it.retireReason || '';
     it.pair = it.pair || '';
     it.size = it.size || '';
+    it.cond = it.cond || '';
     if(!it.no) it.no = nextNo(it.owner);
     if(!it.sleeve) it.sleeve = '';
     if(!it.material) it.material = '';
@@ -1093,7 +1098,15 @@ function renderGrid(){
   if(!list.length){
     const total = DB.items.filter(i=>i.owner===DB.owner).length;
     if(!total){
-      wrap.appendChild(emptyCard('这个衣橱还没有衣服','点右下角「拍照」或「从相册选」，先入库，品类回头补。'));
+      const c0 = el('div','card'); c0.style.padding='26px 22px';
+      c0.innerHTML = '<div style="font-weight:700;font-size:16px;margin-bottom:10px">三步就能用起来</div>'
+        + '<div style="line-height:1.9;font-size:14px">'
+        + '<b>① 入库</b>　点右下「选照片」或把照片拖进来，一批可以多选<br>'
+        + '<b>② 整理</b>　去「新进」，勾选后点「批量处理」，一次把品类、季节、场合、位置设好<br>'
+        + '<b>③ 保命</b>　点右上「自动备份」，选个文件存桌面，以后每次改动自动写进去'
+        + '</div>'
+        + '<div class="sub" style="margin-top:12px">弄完这三步，以后点「查找」输入「睡衣」，就能看到有几件、分别放在哪。</div>';
+      wrap.appendChild(c0);
       return;
     }
     const active = [];
@@ -1171,6 +1184,18 @@ function renderPending(){
   const wrap = document.getElementById('pendingWrap'); if(!wrap) return;
   wrap.innerHTML='';
   const hint = document.getElementById('pendingHint');
+
+  // 入库清单
+  const intakes = (DB.intakes||[]).filter(function(n){ return n.owner===DB.owner || pendingAll; }).slice(0,5);
+  if(intakes.length){
+    const bar = el('div','card');
+    bar.style.cssText = 'padding:10px 14px;margin-bottom:12px;font-size:12.5px;color:var(--sub)';
+    bar.innerHTML = '<b style="color:var(--ink)">最近入库</b>　' + intakes.map(function(n){
+      const d = new Date(n.at);
+      return d.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) + ' · ' + n.count + ' 件';
+    }).join('　｜　');
+    wrap.appendChild(bar);
+  }
   const {noCat, noInfo} = pendingLists(pendingAll);
   const total = noCat.length + noInfo.length;
   const who = pendingAll ? '全部人' : ownerName(DB.owner);
@@ -1207,7 +1232,7 @@ function buildTable(title, list){
   }
   const wrap = el('div','tablewrap');
   const tb = el('table','tb');
-  const head = ['照片','编号','名称','品类','款式','袖长','材质','颜色','季节','场合','频率','位置','购入','淘汰','搭配','操作'];
+  const head = ['照片','编号','名称','品类','款式','袖长','材质','颜色','新旧','季节','场合','频率','位置','购入','淘汰','搭配','操作'];
   const tr0 = el('tr');
   head.forEach(x=>tr0.appendChild(el('th',null,x)));
   const thead = el('thead'); thead.appendChild(tr0); tb.appendChild(thead);
@@ -1223,7 +1248,7 @@ function buildTable(title, list){
     const l = locOf(it);
     const cells = [
       '<img src="'+it.photo+'" alt="">',
-      esc(it.no||''), esc(it.name), esc(it.cat), esc(it.sub), esc(it.sleeve), esc(it.material), esc(it.color),
+      esc(it.no||''), esc(it.name), esc(it.cat), esc(it.sub), esc(it.sleeve), esc(it.material), esc(it.color), esc(it.cond||''),
       (it.season||[]).join('/'), (it.scene||[]).join('/'), esc(it.wear),
       l? esc(locText(l)) : '在外',
       esc(it.boughtAt), esc(it.retiredAt), esc(it.pair)
@@ -1231,7 +1256,7 @@ function buildTable(title, list){
     cells.forEach((c,i)=>{
       const td = el('td');
       if(i===0) td.innerHTML = c;
-      else { td.textContent = c; if(i===14||i===8||i===9) { td.className='cut'; td.title = c; } }
+      else { td.textContent = c; if(i===15||i===9||i===10) { td.className='cut'; td.title = c; } }
       tr.appendChild(td);
     });
     const tdAct = el('td');
@@ -1393,7 +1418,7 @@ function buildCart(title, list){
     const info = el('div','cinfo');
     info.onclick = ()=> openItem(it.id);
     const l = locOf(it);
-    const line1 = [it.cat, it.sub, it.sleeve, it.material, it.color].filter(Boolean).join(' · ');
+    const line1 = [it.cat, it.sub, it.sleeve, it.material, it.color, it.cond].filter(Boolean).join(' · ');
     const line2 = [ (it.season||[]).join('/'), (it.scene||[]).join('/'), it.wear,
       l? locText(l) : '在外', it.boughtAt? '购'+it.boughtAt : '', it.retiredAt? '淘汰'+it.retiredAt : ''
     ].filter(Boolean).join(' · ');
@@ -1424,11 +1449,11 @@ function csvCell(v){
   return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
 }
 document.getElementById('btnCsv').onclick = ()=>{
-  const head = ['编号','名称','归属','品类','款式','袖长','材质','颜色','尺码','季节','场合','频率','位置','购入','预计淘汰','已淘汰','淘汰原因','搭配','描述'];
+  const head = ['编号','名称','归属','品类','款式','袖长','材质','颜色','新旧','尺码','季节','场合','频率','位置','购入','预计淘汰','已淘汰','淘汰原因','搭配','描述'];
   const rows = [head];
   DB.items.filter(i=>i.owner===DB.owner).forEach(it=>{
     const l = locOf(it);
-    rows.push([it.no, it.name, ownerName(it.owner), it.cat, it.sub, it.sleeve, it.material, it.color, it.size,
+    rows.push([it.no, it.name, ownerName(it.owner), it.cat, it.sub, it.sleeve, it.material, it.color, it.cond, it.size,
       (it.season||[]).join('/'), (it.scene||[]).join('/'), it.wear,
       l? locText(l) : '在外', it.boughtAt, it.retirePlan, it.retiredAt, it.retireReason, it.pair, it.desc]);
   });
@@ -1569,7 +1594,74 @@ function renderSeasonPlan(){
 }
 
 /* ================= 渲染：清单 ================= */
-function renderLists(){ renderAudit(); renderUnworn(); renderGaps(); renderLocs(); }
+function renderLists(){ renderListGroups(); renderAudit(); renderUnworn(); renderGaps(); renderLocs(); }
+
+/* 清单的分法：按季节 / 按频率 / 按换季逻辑 */
+let listMode = '按季节';
+function renderListGroups(){
+  const chips = document.getElementById('listModeChips');
+  if(!chips) return;
+  chips.innerHTML='';
+  ['按季节','按频率','按换季'].forEach(function(m){
+    const b = el('button','chip'+(listMode===m?' on':''), m);
+    b.onclick = function(){ listMode=m; renderListGroups(); };
+    chips.appendChild(b);
+  });
+  const wrap = document.getElementById('listGroups');
+  if(!wrap) return;
+  wrap.innerHTML='';
+  const mine = DB.items.filter(function(i){ return i.owner===DB.owner && !i.retiredAt; });
+  if(!mine.length){ wrap.appendChild(el('div','hint','这个衣橱还没有东西。')); return; }
+
+  const renderGroup = function(title, items){
+    const c = el('div','card'); c.style.marginBottom='10px'; c.style.overflow='hidden';
+    const h = el('div');
+    h.style.cssText='padding:9px 14px;background:#faf8f4;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center';
+    h.innerHTML = '<b style="font-size:13px">'+esc(title)+'</b><span class="sub">'+items.length+' 件</span>';
+    c.appendChild(h);
+    items.slice(0,6).forEach(function(it){
+      const l = locOf(it);
+      const r = el('div','row');
+      r.innerHTML = '<div class="th"><img src="'+it.photo+'" alt=""></div>'
+        + '<div class="bd"><div class="t1">'+esc(it.no||'')+' '+esc(it.name)+'</div>'
+        + '<div class="t2">'+esc([it.cat,it.sub,it.cond].filter(Boolean).join(' · '))
+        + (l? ' · 在 '+esc(locText(l)) : ' · 在外')+'</div></div>';
+      r.onclick = function(){ openItem(it.id); };
+      c.appendChild(r);
+    });
+    if(items.length>6){
+      const more = el('div','hint','还有 '+(items.length-6)+' 件，去「衣橱」按条件筛');
+      more.style.margin='6px 14px 10px';
+      c.appendChild(more);
+    }
+    wrap.appendChild(c);
+  };
+
+  if(listMode==='按季节'){
+    SEASONS.forEach(function(s){
+      renderGroup(s+'季', mine.filter(function(i){ return (i.season||[]).indexOf(s)>=0; }));
+    });
+    const none = mine.filter(function(i){ return !(i.season||[]).length; });
+    if(none.length) renderGroup('还没标季节', none);
+    return;
+  }
+  if(listMode==='按频率'){
+    WEARS.forEach(function(w){
+      renderGroup(w, mine.filter(function(i){ return i.wear===w; }));
+    });
+    const none = mine.filter(function(i){ return !i.wear; });
+    if(none.length) renderGroup('还没标频率', none);
+    return;
+  }
+  // 按换季逻辑
+  const s = curSeason;
+  const takeOut = mine.filter(function(i){ return (i.season||[]).indexOf(s)>=0 && isStored(i); });
+  const putAway = mine.filter(function(i){ return (i.season||[]).indexOf(s)<0 && !isStored(i); });
+  const stay = mine.filter(function(i){ return (i.season||[]).indexOf(s)>=0 && !isStored(i); });
+  renderGroup('本季已在外面（'+s+'）', stay);
+  renderGroup('该拿出来（'+s+'，收在箱里）', takeOut);
+  renderGroup('该收起来（不是'+s+'季，还在外面）', putAway);
+}
 
 /* 重复与过期：同类扎堆、计划淘汰日已过 */
 function auditData(){
@@ -1973,6 +2065,17 @@ function openItem(id, jumpPair){
   });
   fm.appendChild(csz); sheet.appendChild(fm);
 
+  // 新旧
+  const fcond = el('div','field');
+  fcond.appendChild(el('div','lab','新旧'));
+  const ccond = el('div','chips');
+  CONDS.forEach(k=>{
+    const b = el('button','chip'+(it.cond===k?' on':''), k);
+    b.onclick = ()=>{ it.cond = it.cond===k?'':k; save(); openItem(it.id, jumpPair); };
+    ccond.appendChild(b);
+  });
+  fcond.appendChild(ccond); sheet.appendChild(fcond);
+
   const fb2 = el('div','field');
   fb2.appendChild(el('div','lab','购买日期'));
   const bp = el('input'); bp.type='text'; bp.value = it.boughtAt||''; bp.placeholder='2023-04';
@@ -2357,6 +2460,12 @@ async function importFiles(files){
     }catch(e){ bad++; console.warn('读图失败', e); }
   }
   try{ save(); }catch(e){}
+  if(ok){
+    DB.intakes = DB.intakes || [];
+    DB.intakes.unshift({ id: uid('n'), at: Date.now(), owner: DB.owner, count: ok });
+    DB.intakes = DB.intakes.slice(0, 30);
+    save();
+  }
   quickMsg('入库 <b>'+ok+'</b> 件'+(bad?'，<b>'+bad+'</b> 张没读进来':''), '共 '+pendingCount()+' 件待分类，点开补品类');
   renderAll();
   if(ok){ toast('已入库 '+ok+' 件'); goPending(); }
@@ -2480,7 +2589,7 @@ document.getElementById('bClass').onclick = ()=>{
 
 /* 批量处理：品类/款式/季节/场合/频率/位置 一次设完 */
 function openClassSheet(ids, after){
-  const st = {cat:null, sub:null, material:null, season:null, scene:null, wear:null, locId:null, locSet:false,
+  const st = {cat:null, sub:null, material:null, cond:null, season:null, scene:null, wear:null, locId:null, locSet:false,
               retire:null, retireReason:''};
   const draw = ()=>{
     sheet.innerHTML=''; sheetHead('批量处理 · '+ids.length+' 件');
@@ -2532,6 +2641,20 @@ function openClassSheet(ids, after){
       c2b.appendChild(b);
     });
     f2b.appendChild(c2b); sheet.appendChild(f2b);
+
+    // 新旧
+    const f2c = el('div','field');
+    f2c.appendChild(el('div','lab','新旧'));
+    const c2c = el('div','chips');
+    const b2c = el('button','chip'+(st.cond===null?' on':''), '不改');
+    b2c.onclick = ()=>{ st.cond=null; draw(); };
+    c2c.appendChild(b2c);
+    CONDS.forEach(function(k){
+      const b = el('button','chip'+(st.cond===k?' on':''), k);
+      b.onclick = ()=>{ st.cond = st.cond===k?null:k; draw(); };
+      c2c.appendChild(b);
+    });
+    f2c.appendChild(c2c); sheet.appendChild(f2c);
 
     // 季节（多选）
     const f3 = el('div','field');
@@ -2638,6 +2761,7 @@ function openClassSheet(ids, after){
     const parts = [];
     if(st.cat) parts.push('品类='+st.cat+(st.sub?'·'+st.sub:''));
     if(st.material) parts.push('材质='+st.material);
+    if(st.cond) parts.push('新旧='+st.cond);
     if(st.season) parts.push('季节='+st.season.join('/'));
     if(st.scene) parts.push('场合='+st.scene.join('/'));
     if(st.wear) parts.push('频率='+st.wear);
@@ -2666,6 +2790,7 @@ function openClassSheet(ids, after){
         if(st.season) it.season = st.season.slice();
         if(st.scene) it.scene = st.scene.slice();
         if(st.material) it.material = st.material;
+        if(st.cond) it.cond = st.cond;
         if(st.retire==='retire'){
           it.retiredAt = it.retiredAt || new Date().toISOString().slice(0,7);
           it.retireReason = st.retireReason || it.retireReason || '';
@@ -2817,7 +2942,7 @@ document.getElementById('quickDone').onclick = ()=>{
 
 /* ================= 查找 ================= */
 function findMatch(it, q){
-  const hay = [it.no, it.name, it.cat, it.sub, it.sleeve, it.material, it.color, it.desc, it.pair,
+  const hay = [it.no, it.name, it.cat, it.sub, it.sleeve, it.material, it.color, it.desc, it.pair, it.cond,
     (it.season||[]).join(''), (it.scene||[]).join('')].filter(Boolean).join(' ').toLowerCase();
   return hay.indexOf(q.toLowerCase()) >= 0;
 }
@@ -2849,7 +2974,17 @@ function openFind(){
       return;
     }
     if(!list.length){
-      out.appendChild(el('div','hint','没找到「'+kw+'」。换个词试试，或检查是不是还没入库。'));
+      const miss = el('div');
+      miss.appendChild(el('div','hint','没找到「'+kw+'」。换个词试试，或者——家里确实没有，那就是该买的。'));
+      const bGap = el('button','mini on','记进「缺的那一件」：'+kw);
+      bGap.onclick = function(){
+        DB.gaps = DB.gaps || [];
+        DB.gaps.push({id:uid('g'), name:kw, scene:'', why:'搜索没找到，可能该补一件', done:false, owner:DB.owner});
+        save(); toast('已记进缺件清单');
+        bGap.textContent = '已记下'; bGap.disabled = true;
+      };
+      miss.appendChild(bGap);
+      out.appendChild(miss);
       return;
     }
     // 按位置汇总
@@ -3095,7 +3230,7 @@ curSeason = seasonByMonth();
 const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '78';
+  const BUILD = '79';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
