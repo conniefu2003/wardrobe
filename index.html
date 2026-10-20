@@ -283,9 +283,9 @@
   <!-- 衣橱 -->
   <section id="tab-wardrobe">
     <div id="tipbar">
-      <b>照片怎么进来</b>
-      <span id="tipText">微信里收到的图：长按 → 保存到相册 → 回这里点「从相册选」，可一次选多张。</span>
-      <button class="mini ghost" id="tipClose">知道了</button>
+      <b>照片进来</b>
+      <span id="tipText">拖拽 / Ctrl+V 粘贴 / 点右下「选照片」，三种都行，可一次多张。</span>
+      <button class="mini ghost" id="tipClose">不再提示</button>
     </div>
     <div class="frow"><span class="fl">季节</span><div class="chips xs" id="fSeason"></div></div>
     <div class="frow"><span class="fl">频率</span><div class="chips xs" id="fWear"></div></div>
@@ -543,7 +543,8 @@ function save(){
   // 还没成功读到过数据、手上又是空的 → 绝不写，避免把库里的数据盖成空
   if(!DB.loaded && DB.items.length === 0){ updateStoreStatus(); return; }
   const payload = JSON.stringify({
-    items:DB.items, saved:DB.saved, locations:DB.locations, gaps:DB.gaps, owner:DB.owner
+    items:DB.items, saved:DB.saved, locations:DB.locations, gaps:DB.gaps, owner:DB.owner,
+    tipClosed: DB.tipClosed || false
   });
   DB.lastSize = payload.length/1048576;
   if(Store.mode==='memory' || Store.mode==='pending'){ DB.memOnly = true; updateStoreStatus(); return; }
@@ -2781,6 +2782,48 @@ document.getElementById('btnPrint').onclick = ()=>{
   window.print();
 };
 
+/* ================= 数据自检（?diag=1） ================= */
+async function runDiag(){
+  const rows = [];
+  rows.push('存储方式：' + Store.mode);
+  rows.push('当前数据库里的件数：' + DB.items.length);
+  rows.push('Store.err：' + (Store.err || '无'));
+  rows.push('');
+  const keys = ['wardrobe.v3','wardrobe.bak','wardrobe.v2'];
+  for(const k of keys){
+    let v = null;
+    try{ v = await Store.get(k); }catch(e){ rows.push(k+'：读取异常 ' + e.message); continue; }
+    if(!v){ rows.push(k + '：没有这条'); continue; }
+    let info = '';
+    try{
+      const o = JSON.parse(v);
+      info = '件数 ' + ((o.items||[]).length);
+    }catch(e){
+      info = '解析失败（存档损坏）';
+    }
+    rows.push(k + '：' + info + ' / ' + Math.round(v.length/1024) + ' KB');
+  }
+  rows.push('');
+  try{
+    for(const k of keys){
+      const v = localStorage.getItem(k);
+      rows.push('localStorage.' + k + '：' + (v ? Math.round(v.length/1024)+' KB' : '无'));
+    }
+  }catch(e){ rows.push('localStorage：读不了（被禁）'); }
+  rows.push('');
+  rows.push('页面版本：v7.4+');
+  rows.push('打开时间：' + new Date().toLocaleString('zh-CN'));
+
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;inset:0;z-index:99;background:#fff;padding:22px;overflow:auto;font-family:monospace;font-size:13px;line-height:1.7';
+  d.innerHTML = '<h3 style="font-family:sans-serif">数据自检</h3>'
+    + '<pre style="white-space:pre-wrap;background:#f7f5f1;padding:14px;border-radius:12px">' + esc(rows.join('\n')) + '</pre>'
+    + '<p style="font-family:sans-serif;color:#666">把上面这段截图发我。如果没有「wardrobe.v3：件数 N」，说明数据确实没存进去。</p>'
+    + '<button style="padding:10px 18px;border-radius:10px;border:1px solid #ccc;background:#fff">关闭</button>';
+  d.querySelector('button').onclick = ()=> d.remove();
+  document.body.appendChild(d);
+}
+
 /* ================= 启动 ================= */
 function showTab(t){
   tab = t;
@@ -2801,6 +2844,7 @@ function renderAll(){
   renderTable();
   renderSeasonPlan();
   renderLists();
+  applyTipState();
   updateStoreStatus();
 }
 function renderOwnerBox(){
@@ -2859,10 +2903,17 @@ document.getElementById('fabManual').onclick = openAdd;
   if(fb){ fb.textContent = '🖼 选照片'; fb.onclick = ()=> document.getElementById('fileAlbum').click(); }
   const ab = document.getElementById('fabAlbum'); if(ab) ab.style.display='none';
   const tp = document.getElementById('tipText');
-  if(tp) tp.textContent = '电脑上直接把照片拖进窗口就行，也可以点「选照片」一次挑多张。';
+  if(tp) tp.textContent = '拖拽照片到窗口 / 复制图片后按 Ctrl+V / 点右下「选照片」，三种都行，可一次多张。';
 })();
+function applyTipState(){
+  const bar = document.getElementById('tipbar');
+  if(bar && DB.tipClosed) bar.classList.add('hide');
+}
 const tipClose = document.getElementById('tipClose');
-if(tipClose) tipClose.onclick = ()=> document.getElementById('tipbar').classList.add('hide');
+if(tipClose) tipClose.onclick = ()=>{
+  DB.tipClosed = true; save();
+  document.getElementById('tipbar').classList.add('hide');
+};
 
 function showStoreBanner(){
   const bar = document.getElementById('warnbar');
@@ -2887,12 +2938,15 @@ function showStoreBanner(){
 }
 
 curSeason = seasonByMonth();
+const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 load().then(mode=>{
   renderAll();
   if(mode==='memory'){ DB.memOnly = true; showStoreBanner(); toast('这个浏览器不让存数据，先看顶部提示'); }
+  if(WANT_DIAG) runDiag();
 }).catch(err=>{
   console.warn('启动失败', err);
   migrate(); renderAll(); showStoreBanner();
+  if(WANT_DIAG) runDiag();
 });
 </script>
 </body>
