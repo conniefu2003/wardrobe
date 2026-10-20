@@ -2811,7 +2811,9 @@ async function runDiag(){
     }
   }catch(e){ rows.push('localStorage：读不了（被禁）'); }
   rows.push('');
-  rows.push('页面版本：v7.4+');
+  rows.push('页面版本：v7.5');
+  rows.push('网址来源：' + location.origin + location.pathname + location.search);
+  rows.push('浏览器：' + (navigator.userAgent||'').slice(0,120));
   rows.push('打开时间：' + new Date().toLocaleString('zh-CN'));
 
   const d = document.createElement('div');
@@ -2939,6 +2941,22 @@ function showStoreBanner(){
 
 curSeason = seasonByMonth();
 const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
+/* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
+(function(){
+  const BUILD = '75';
+  try{
+    fetch('version.json?t=' + Date.now(), {cache:'no-store'})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(o){
+        if(!o || !o.v || String(o.v) === BUILD) return;
+        if(sessionStorage.getItem('_vfix_'+BUILD)) return;
+        sessionStorage.setItem('_vfix_'+BUILD, '1');
+        const u = new URL(location.href);
+        u.searchParams.set('v', o.v);
+        location.replace(u.toString());
+      }).catch(function(){});
+  }catch(e){}
+})();
 load().then(mode=>{
   renderAll();
   if(mode==='memory'){ DB.memOnly = true; showStoreBanner(); toast('这个浏览器不让存数据，先看顶部提示'); }
