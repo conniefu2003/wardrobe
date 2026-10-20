@@ -3213,6 +3213,41 @@ async function runDiag(){
   document.body.appendChild(d);
 }
 
+async function runSelfTest(){
+  const rows = [];
+  const line = function(name, pass, note){
+    rows.push((pass?'✓ 通过  ':'✗ 失败  ') + name + (note? '　—　'+note : ''));
+  };
+  line('浏览器允许存储', Store.mode==='idb' || Store.mode==='ls', Store.mode);
+  try{
+    await Store.set('__selftest__', 'hello');
+    const v = await Store.get('__selftest__');
+    line('写入后能读回', v === 'hello', v === 'hello' ? '正常' : '读回的值不对');
+  }catch(e){ line('写入后能读回', false, e.message); }
+  line('品类是 12 类', CATS.length === 12, '实际 '+CATS.length+' 类');
+  line('编号能生成', /^CO-\d{3}$/.test(nextNo('connie')), nextNo('connie'));
+  line('搜索能命中', findMatch({name:'灰色睡衣', cat:'睡衣', sub:'睡衣套装'}, '睡衣') === true);
+  line('按人计数正常', OWNERS.every(function(o){ return typeof o[0] === 'string'; }));
+  line('自动备份已开', autoFileState === 'on', autoFileState === 'on' ? '好' : '还没开');
+  rows.push('');
+  rows.push('当前件数：' + DB.items.length);
+  const byOwner = {};
+  DB.items.forEach(function(i){ byOwner[i.owner] = (byOwner[i.owner]||0)+1; });
+  rows.push('按归属：' + (Object.keys(byOwner).map(function(k){ return k+'='+byOwner[k]; }).join('  ') || '（空）'));
+  rows.push('页面版本：' + (document.getElementById('brandVer')||{}).textContent);
+  rows.push('时间：' + new Date().toLocaleString('zh-CN'));
+
+  const bad = rows.filter(function(r){ return r.indexOf('✗') === 0; }).length;
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;inset:0;z-index:99;background:#fff;padding:22px;overflow:auto;font-family:monospace;font-size:13px;line-height:1.9';
+  d.innerHTML = '<h3 style="font-family:sans-serif;margin-top:0">自检结果：' + (bad? bad+' 项失败' : '全部通过') + '</h3>'
+    + '<pre style="white-space:pre-wrap;background:#f7f5f1;padding:14px;border-radius:12px">' + esc(rows.join('\n')) + '</pre>'
+    + '<p style="font-family:sans-serif;color:#666">把这一屏截图发我即可。</p>'
+    + '<button style="padding:10px 18px;border-radius:10px;border:1px solid #ccc;background:#fff">关闭</button>';
+  d.querySelector('button').onclick = function(){ d.remove(); };
+  document.body.appendChild(d);
+}
+
 /* ================= 启动 ================= */
 function showTab(t){
   tab = t;
@@ -3329,9 +3364,10 @@ function showStoreBanner(){
 
 curSeason = seasonByMonth();
 const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
+const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '80';
+  const BUILD = '81';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
@@ -3352,10 +3388,12 @@ load().then(async mode=>{
   renderAll();
   if(mode==='memory'){ DB.memOnly = true; showStoreBanner(); toast('这个浏览器不让存数据，先看顶部提示'); }
   if(WANT_DIAG) runDiag();
+  if(WANT_TEST) runSelfTest();
 }).catch(err=>{
   console.warn('启动失败', err);
   migrate(); renderAll(); showStoreBanner();
   if(WANT_DIAG) runDiag();
+  if(WANT_TEST) runSelfTest();
 });
 </script>
 </body>
