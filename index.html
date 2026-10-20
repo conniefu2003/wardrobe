@@ -291,6 +291,7 @@
     <div class="frow"><span class="fl">季节</span><div class="chips xs" id="fSeason"></div></div>
     <div class="frow"><span class="fl">频率</span><div class="chips xs" id="fWear"></div></div>
     <div class="frow"><span class="fl">位置</span><div class="chips xs" id="fLoc"></div></div>
+    <div class="frow"><span class="fl">大类</span><div class="chips xs" id="fDept"></div></div>
     <div class="frow"><span class="fl">品类</span><div class="chips xs" id="fCat"></div></div>
     <div class="frow"><span class="fl">款式</span><div class="chips xs" id="fSub"></div></div>
     <div class="frow" id="sleeveRow" style="display:none"><span class="fl">袖长</span><div class="chips xs" id="fSleeve"></div></div>
@@ -401,6 +402,20 @@ const SUBCATS = {
   '床品':['被子','被套','四件套','枕套','枕头','床单','毯子','床垫套'],
   '家居用品':['毛巾','浴巾','收纳箱','收纳盒','清洁用品','厨房用品','餐具','装饰摆件','日用品','小家电']
 };
+/* 7 个一级大类（Connie 2026-10-20 确认）：细类仍按原有 12 品类走 */
+const DEPTS7 = {
+  '衣服': ['上装','下装','外套','连衣裙','睡衣'],
+  '鞋': ['鞋'],
+  '围巾': ['围巾','帽子'],
+  '皮带': ['腰带'],
+  '包': ['包'],
+  '床品': ['床品'],
+  '厨房用品': ['家居用品']
+};
+const DEPT7_NAMES = Object.keys(DEPTS7);
+const CAT2DEPT7 = {};
+DEPT7_NAMES.forEach(function(d){ DEPTS7[d].forEach(function(c){ CAT2DEPT7[c] = d; }); });
+function dept7Of(cat){ return CAT2DEPT7[cat] || '衣服'; }
 const SLEEVES = ['无袖','短袖','中袖','长袖'];
 const MATERIALS = ['棉','麻','真丝','雪纺','羊毛','羊绒','针织','牛仔','涤纶','混纺'];
 const MATERIALS_SHOE = ['牛皮','羊皮','麂皮','帆布','橡胶','合成革','网布','绒面'];
@@ -493,7 +508,7 @@ const HUE = {'红':0,'橙':28,'黄':52,'绿':130,'蓝':212,'紫':272,'粉':332,'
 const KEY = 'wardrobe.v3';
 const BAK = 'wardrobe.bak';
 let DB = {items:[], saved:[], locations:[], gaps:[], owner:'connie', memOnly:false};
-let view = {season:'全部', wear:'全部', loc:'全部', cat:'全部', sub:'全部', sleeve:'全部', mat:'全部'};
+let view = {dept:'全部', season:'全部', wear:'全部', loc:'全部', cat:'全部', sub:'全部', sleeve:'全部', mat:'全部'};
 let tab = 'wardrobe';
 let searchQ = '';
 let curSeason = null;      // 今天穿 / 换季 用的季节
@@ -1030,9 +1045,20 @@ function renderWardrobe(){
     b.onclick = ()=>{ view.loc=v; renderWardrobe(); };
     locBox.appendChild(b);
   });
-  // 品类
+  // 大类（7）
+  const deptBox = document.getElementById('fDept');
+  deptBox.innerHTML='';
+  ['全部'].concat(DEPT7_NAMES).forEach(function(d){
+    const n = d==='全部' ? null : DB.items.filter(function(i){ return i.owner===DB.owner && dept7Of(i.cat)===d; }).length;
+    const b = el('button','chip'+(view.dept===d?' on':''), d + (n===null? '' : ' '+n));
+    b.onclick = function(){ view.dept=d; view.cat='全部'; view.sub='全部'; renderWardrobe(); };
+    deptBox.appendChild(b);
+  });
+  // 品类（随大类收窄）
   const uncat = DB.items.filter(i=>i.owner===DB.owner && i.cat==='待分类').length;
-  const cats = ['全部', ...CATS].concat(uncat?['待分类']:[]);
+  let catPool = CATS;
+  if(view.dept && view.dept!=='全部') catPool = DEPTS7[view.dept] || CATS;
+  const cats = ['全部', ...catPool].concat(uncat?['待分类']:[]);
   chipRow('fCat', '品类', cats, view.cat, v=>{ view.cat=v; view.sub='全部'; view.sleeve='全部'; view.mat='全部'; });
   // 款式
   const subBox = document.getElementById('fSub');
@@ -1078,6 +1104,7 @@ function filteredItems(){
   if(view.wear!=='全部') list = list.filter(i=>i.wear===view.wear);
   if(view.loc==='在外') list = list.filter(i=>!isStored(i));
   else if(view.loc!=='全部') list = list.filter(i=>{ const l=locOf(i); return l && locText(l)===view.loc; });
+  if(view.dept && view.dept!=='全部') list = list.filter(i=>dept7Of(i.cat)===view.dept);
   if(view.cat!=='全部') list = list.filter(i=>i.cat===view.cat);
   if(view.sub!=='全部') list = list.filter(i=>i.sub===view.sub);
   if(view.sleeve!=='全部') list = list.filter(i=>i.sleeve===view.sleeve);
@@ -1679,9 +1706,14 @@ function renderStock(){
   const cnt = document.getElementById('cStock');
   if(cnt) cnt.textContent = missed.length;
   const last = DB.stockAt ? new Date(DB.stockAt).toLocaleDateString('zh-CN') : '从来没盘过';
+  const days = DB.stockAt ? Math.floor((Date.now()-DB.stockAt)/86400000) : null;
+  const due = (days===null) || days >= 90;
   const line = el('div','hint');
   line.style.margin = '0 2px 10px';
-  line.textContent = '上次盘点：' + last + (missed.length? '；有 '+missed.length+' 件当时没找到' : '');
+  if(due) line.style.color = '#b4552f';
+  line.textContent = (due? '该盘点了（季度一次）· ' : '')
+    + '上次盘点：' + last + (days!==null? '（'+days+' 天前）' : '')
+    + (missed.length? '；有 '+missed.length+' 件当时没找到' : '');
   wrap.appendChild(line);
   if(!missed.length) return;
   const c = el('div','card'); c.style.overflow='hidden';
@@ -3374,7 +3406,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '82';
+  const BUILD = '83';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
