@@ -331,6 +331,10 @@
 
   <!-- 清单 -->
   <section id="tab-lists" hidden>
+    <div class="sec"><h2>重复与过期</h2><span class="cnt warn" id="cAudit">0</span><span class="sp"></span></div>
+    <div class="hint" style="margin:-4px 2px 12px">同类超过 3 件的、计划淘汰日期已过的——这些都该处理掉，别再买了。</div>
+    <div id="auditWrap"></div>
+
     <div class="sec"><h2>买了没穿</h2><span class="cnt warn" id="cUnworn">0</span><span class="sp"></span></div>
     <div class="hint" style="margin:-4px 2px 12px">「从未穿」「偶尔穿」的都在这里，按原因分组。</div>
     <div id="unwornWrap"></div>
@@ -1565,7 +1569,75 @@ function renderSeasonPlan(){
 }
 
 /* ================= 渲染：清单 ================= */
-function renderLists(){ renderUnworn(); renderGaps(); renderLocs(); }
+function renderLists(){ renderAudit(); renderUnworn(); renderGaps(); renderLocs(); }
+
+/* 重复与过期：同类扎堆、计划淘汰日已过 */
+function auditData(){
+  const mine = DB.items.filter(i=>i.owner===DB.owner && !i.retiredAt);
+  const map = {};
+  mine.forEach(function(i){
+    const k = i.cat + '|' + (i.sub||'');
+    (map[k] = map[k] || []).push(i);
+  });
+  const groups = Object.keys(map)
+    .map(function(k){ return {label: k.split('|').filter(Boolean).join(' · '), items: map[k]}; })
+    .filter(function(g){ return g.items.length >= 3; })
+    .sort(function(a,b){ return b.items.length - a.items.length; });
+  const today = new Date().toISOString().slice(0,7);
+  const overdue = mine.filter(function(i){ return i.retirePlan && i.retirePlan <= today; });
+  return {groups, overdue};
+}
+function renderAudit(){
+  const wrap = document.getElementById('auditWrap'); if(!wrap) return;
+  wrap.innerHTML='';
+  const {groups, overdue} = auditData();
+  const cnt = document.getElementById('cAudit');
+  if(cnt) cnt.textContent = groups.length + overdue.length;
+
+  if(!groups.length && !overdue.length){
+    wrap.appendChild(el('div','hint','没有同类扎堆，也没有过期的，挺干净。'));
+    return;
+  }
+  groups.slice(0,8).forEach(function(g){
+    const c = el('div','card'); c.style.marginBottom='10px'; c.style.overflow='hidden';
+    const h = el('div');
+    h.style.cssText='padding:10px 14px;background:#faf8f4;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center';
+    h.innerHTML = '<b style="font-size:13.5px">'+esc(g.label)+'</b><span class="cnt warn" style="font-size:11px">'+g.items.length+' 件</span>';
+    c.appendChild(h);
+    g.items.slice(0,4).forEach(function(it){
+      const l = locOf(it);
+      const r = el('div','row');
+      r.innerHTML = '<div class="th"><img src="'+it.photo+'" alt=""></div>'
+        + '<div class="bd"><div class="t1">'+esc(it.no||'')+' '+esc(it.name)+'</div>'
+        + '<div class="t2">'+esc(it.color)+(l?' · '+esc(locText(l)):' · 在外')+' · '+esc(it.wear)+'</div></div>';
+      r.onclick = function(){ openItem(it.id); };
+      c.appendChild(r);
+    });
+    if(g.items.length>4){
+      const more = el('div','hint','还有 '+(g.items.length-4)+' 件');
+      more.style.margin='6px 14px 10px';
+      c.appendChild(more);
+    }
+    wrap.appendChild(c);
+  });
+  if(overdue.length){
+    const c = el('div','card'); c.style.overflow='hidden';
+    const h = el('div');
+    h.style.cssText='padding:10px 14px;background:#fbeee8;border-bottom:1px solid var(--line)';
+    h.innerHTML = '<b style="font-size:13.5px;color:#b4552f">计划淘汰日期已过 · '+overdue.length+' 件</b>';
+    c.appendChild(h);
+    overdue.slice(0,6).forEach(function(it){
+      const l = locOf(it);
+      const r = el('div','row');
+      r.innerHTML = '<div class="th"><img src="'+it.photo+'" alt=""></div>'
+        + '<div class="bd"><div class="t1">'+esc(it.no||'')+' '+esc(it.name)+'</div>'
+        + '<div class="t2">计划 '+esc(it.retirePlan)+' 淘汰'+(l?' · 在 '+esc(locText(l)):'')+'</div></div>';
+      r.onclick = function(){ openItem(it.id); };
+      c.appendChild(r);
+    });
+    wrap.appendChild(c);
+  }
+}
 function renderUnworn(){
   const wrap = document.getElementById('unwornWrap'); wrap.innerHTML='';
   const un = DB.items.filter(i=>i.owner===DB.owner && (i.wear==='从未穿' || i.wear==='偶尔穿'));
@@ -3023,7 +3095,7 @@ curSeason = seasonByMonth();
 const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '77';
+  const BUILD = '78';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
