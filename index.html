@@ -396,6 +396,7 @@
 <input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
 <input type="file" id="fileShoot" accept="image/*" capture="environment" hidden>
 <input type="file" id="fileShootMulti" accept="image/*" multiple hidden>
+<input type="file" id="filePhotoFill" accept="image/*" hidden>
 <input type="file" id="fileAlbum" accept="image/*" multiple hidden>
 <input type="file" id="fileImport" accept="application/json,.json" hidden>
 <div id="lightbox"><img id="lbImg" alt=""><div class="tip">点任意处关闭</div></div>
@@ -1405,6 +1406,7 @@ function renderGrid(){
 let cartRefresh = function(){ renderTable(); };
 let pendingAll = false;
 let ownerAll = false;
+let photoTarget = null;
 /* 缺什么：唯一判据，列表与红色标签共用 */
 function missingOf(it){
   const m = [];
@@ -2223,9 +2225,20 @@ function openItem(id, jumpPair){
   const f = el('div','field');
   const pk = el('div','pick');
   pk.style.cssText = 'aspect-ratio:4/5;cursor:zoom-in';
-  const im = el('img'); im.src = it.photo; im.alt='';
-  pk.appendChild(im);
-  pk.onclick = function(){ openPhoto(it.photo); };
+  const noPic = (!it.photo || it.photo === NO_PHOTO);
+  if(noPic){
+    pk.style.cursor = 'pointer';
+    pk.innerHTML = '<div class="tip" style="text-align:center">这件还没有照片<br>'
+      + '<span class="sub">点这里补一张（拍照或从相册选）</span></div>';
+    pk.onclick = function(){
+      photoTarget = it.id;
+      document.getElementById('filePhotoFill').click();
+    };
+  }else{
+    const im = el('img'); im.src = it.photo; im.alt='';
+    pk.appendChild(im);
+    pk.onclick = function(){ openPhoto(it.photo); };
+  }
   f.appendChild(pk);
   sheet.appendChild(f);
 
@@ -3492,6 +3505,23 @@ document.getElementById('filePick').onchange = async e=>{
 document.getElementById('fileCam').onchange = e=>{ const fs=e.target.files; e.target.value=''; if(fs&&fs.length) importFiles(fs); };
 document.getElementById('fileShoot').onchange = e=>{ const fs=e.target.files; e.target.value=''; if(fs&&fs.length) shootImport(fs); };
 document.getElementById('fileShootMulti').onchange = e=>{ const fs=e.target.files; e.target.value=''; if(fs&&fs.length) shootImport(fs); };
+document.getElementById('filePhotoFill').onchange = async e=>{
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if(!f || !photoTarget) return;
+  const target = DB.items.find(function(i){ return i.id === photoTarget; });
+  if(!target){ photoTarget = null; return; }
+  try{
+    const r = await compress(f, 760);
+    target.photo = r.dataURL;
+    const col = dominantColor(r.img);
+    if(col && (!target.hex || target.hex==='#9b9b9b')){ target.color = col.name; target.hex = col.hex; }
+    save(); closeSheet(); renderAll();
+    toast('照片补上了');
+    openItem(target.id);
+  }catch(err){ console.warn(err); toast('这张图读不了，换一张'); }
+  photoTarget = null;
+};
 document.getElementById('fileAlbum').onchange = e=>{ const fs=e.target.files; e.target.value=''; if(fs&&fs.length) importFiles(fs); };
 document.getElementById('quickAgain').onclick = ()=>{
   if(shootPreset) document.getElementById(shootInput || 'fileShootMulti').click();
@@ -3881,7 +3911,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '96';
+  const BUILD = '97';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
