@@ -35,6 +35,8 @@
     padding:9px 0;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
   .who button.on{background:var(--accent);border-color:var(--accent);color:#fff}
   .who button:last-child{grid-column:1 / -1}
+  .storeline{max-width:1000px;margin:0 auto;padding:0 18px 8px;font-size:11.5px;color:var(--sub)}
+  .storeline span{letter-spacing:.3px}
   nav.tabs{max-width:1000px;margin:0 auto;padding:0 14px 11px;display:flex;gap:6px}
   nav.tabs button{flex:1;border:none;background:transparent;color:var(--sub);font-size:14px;
     padding:9px 0;border-radius:12px;cursor:pointer;font-weight:600;font-family:inherit;white-space:nowrap}
@@ -265,6 +267,7 @@
     <button class="icon-btn" id="btnPrint">位置单</button>
   </div>
   <div class="who" id="whoBox"></div>
+  <div class="storeline"><span id="storeStatus">正在读取数据…</span></div>
   <nav class="tabs">
     <button data-tab="wardrobe" class="on">衣橱</button>
     <button data-tab="pending">新进</button>
@@ -469,6 +472,7 @@ const HUE = {'红':0,'橙':28,'黄':52,'绿':130,'蓝':212,'紫':272,'粉':332,'
 
 /* ================= 状态 ================= */
 const KEY = 'wardrobe.v3';
+const BAK = 'wardrobe.bak';
 let DB = {items:[], saved:[], locations:[], gaps:[], owner:'connie', memOnly:false};
 let view = {season:'全部', wear:'全部', loc:'全部', cat:'全部', sub:'全部', sleeve:'全部', mat:'全部'};
 let tab = 'wardrobe';
@@ -535,21 +539,37 @@ const Store = {
 };
 
 function save(){
+  // 还没成功读到过数据、手上又是空的 → 绝不写，避免把库里的数据盖成空
+  if(!DB.loaded && DB.items.length === 0){ updateStoreStatus(); return; }
   const payload = JSON.stringify({
     items:DB.items, saved:DB.saved, locations:DB.locations, gaps:DB.gaps, owner:DB.owner
   });
   DB.lastSize = payload.length/1048576;
-  if(Store.mode==='memory' || Store.mode==='pending'){ DB.memOnly = true; return; }
+  if(Store.mode==='memory' || Store.mode==='pending'){ DB.memOnly = true; updateStoreStatus(); return; }
   Store.set(KEY, payload).then(ok=>{
-    if(ok) return;
+    if(ok){
+      DB.lastSaved = Date.now();
+      Store.set(BAK, payload);          // 影子副本：主档被写坏也有后手
+      updateStoreStatus();
+      return;
+    }
     if(Store.mode==='ls'){
       Store.openIdb().then(idb=>{ Store.idb=idb; Store.mode='idb'; return Store.set(KEY,payload); })
-        .then(ok2=>{ if(!ok2) throw new Error('idb fail'); })
-        .catch(()=>{ DB.memOnly = true; toast('存不进去了，先点「备份」导出'); });
+        .then(ok2=>{ if(!ok2) throw new Error('idb fail'); DB.lastSaved = Date.now(); updateStoreStatus(); })
+        .catch(()=>{ DB.memOnly = true; updateStoreStatus(); toast('存不进去了，先点「备份」导出'); });
     }else{
-      DB.memOnly = true; toast('存不进去了，先点「备份」导出');
+      DB.memOnly = true; updateStoreStatus(); toast('存不进去了，先点「备份」导出');
     }
   });
+}
+function updateStoreStatus(){
+  const elx = document.getElementById('storeStatus');
+  if(!elx) return;
+  const n = DB.items.length;
+  const mode = Store.mode==='idb' ? 'IndexedDB' : Store.mode==='ls' ? 'localStorage' : '内存（关掉就没）';
+  const t = DB.lastSaved ? new Date(DB.lastSaved).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) : '—';
+  elx.textContent = '共 '+n+' 件 · ' + mode + ' · 上次保存 ' + t;
+  elx.style.color = (Store.mode==='memory') ? '#c0392b' : 'var(--sub)';
 }
 
 /* ================= 迁移与默认 ================= */
@@ -617,19 +637,30 @@ function migrate(){
 }
 async function load(){
   const mode = await Store.open();
-  let raw = null;
-  try{ raw = await Store.get(KEY); }catch(e){}
-  if(!raw){
-    try{ raw = await Store.get('wardrobe.v2'); if(raw) await Store.set(KEY, raw); }catch(e){}
-  }
-  if(!raw){
+  // 依次尝试：主档 → 影子副本 → 旧版 v2 → 浏览器 localStorage
+  const cands = [];
+  try{ const a = await Store.get(KEY); if(a) cands.push(['主档', a]); }catch(e){}
+  try{ const b = await Store.get(BAK); if(b) cands.push(['影子副本', b]); }catch(e){}
+  try{ const c = await Store.get('wardrobe.v2'); if(c) cands.push(['旧版v2', c]); }catch(e){}
+  try{
+    const d = localStorage.getItem(KEY) || localStorage.getItem('wardrobe.v2');
+    if(d) cands.push(['浏览器localStorage', d]);
+  }catch(e){}
+
+  let best = null, bestName = '';
+  for(const c of cands){
     try{
-      const legacy = localStorage.getItem(KEY) || localStorage.getItem('wardrobe.v2');
-      if(legacy){ raw = legacy; await Store.set(KEY, legacy); }
-    }catch(e){}
+      const o = JSON.parse(c[1]);
+      const n = (o.items||[]).length;
+      if(!best || n > best.name_len){ best = {o:o, name_len:n, tag:c[0]}; bestName = c[0]; }
+    }catch(e){ console.warn('这条读不出来', c[0], e); }
   }
-  if(raw){ try{ DB = Object.assign(DB, JSON.parse(raw)); }catch(e){ console.warn('旧数据读不出来', e); } }
+  if(best){
+    DB = Object.assign(DB, best.o);
+    if(bestName !== '主档'){ toast('从'+bestName+'恢复了数据'); }
+  }
   migrate();
+  DB.loaded = true;
   return mode;
 }
 
@@ -2693,6 +2724,7 @@ function renderAll(){
   renderTable();
   renderSeasonPlan();
   renderLists();
+  updateStoreStatus();
 }
 function renderOwnerBox(){
   const box = document.getElementById('whoBox');
