@@ -260,7 +260,7 @@
 
 <header>
   <div class="head-in">
-    <div class="brand">我的衣橱<small>WARDROBE · v3</small></div>
+    <div class="brand">我的衣橱<small id="brandVer">WARDROBE</small></div>
     <div class="head-spacer"></div>
     <button class="icon-btn" id="btnFind">查找</button>
     <button class="icon-btn" id="btnExport">备份</button>
@@ -2944,6 +2944,8 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
   const BUILD = '75';
+  const bv = document.getElementById('brandVer');
+  if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
     fetch('version.json?t=' + Date.now(), {cache:'no-store'})
       .then(function(r){ return r.ok ? r.json() : null; })
