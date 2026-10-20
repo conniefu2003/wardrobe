@@ -307,6 +307,7 @@
     <div id="tipbar">
       <b>照片进来</b>
       <span id="tipText">拖拽 / Ctrl+V 粘贴 / 点右下「选照片」，三种都行，可一次多张。</span>
+      <button class="mini ghost" id="tipHelp">用法</button>
       <button class="mini ghost" id="tipInstall">加到桌面</button>
       <button class="mini ghost" id="tipClose">不再提示</button>
     </div>
@@ -3973,6 +3974,30 @@ if(tipClose) tipClose.onclick = ()=>{
   DB.tipClosed = true; save();
   document.getElementById('tipbar').classList.add('hide');
 };
+const tipHelp = document.getElementById('tipHelp');
+if(tipHelp) tipHelp.onclick = openHowto;
+function openHowto(){
+  sheet.innerHTML=''; sheetHead('三步就能用起来');
+  const steps = [
+    ['① 入库', '点右下「＋ 加东西」→「按类连拍」→ 选好一类（比如 衣服·上装·衬衫）→「从相册选」把这一批的照片全选进来。\n一类只选一次，中间只管选图。拍完点「完成」，换下一类再来一次。'],
+    ['② 整理', '大部分已经自动归好类了。要补的是：季节、放在哪只箱子、新旧。\n点「新进」→ 勾选一批 →「批量处理」→ 一次设好 → 保存。缺什么会标红。'],
+    ['③ 保命', '点右上「备份」，存一个文件到「下载」。\n每录完一类就点一次。不备份，清一次缓存就全没了。']
+  ];
+  steps.forEach(function(s){
+    const c = el('div','card'); c.style.padding='14px 16px'; c.style.marginTop='10px';
+    c.innerHTML = '<div style="font-weight:700;font-size:15px;margin-bottom:6px">'+esc(s[0])+'</div>'
+      + '<div style="font-size:13.5px;line-height:1.75;white-space:pre-wrap">'+esc(s[1])+'</div>';
+    sheet.appendChild(c);
+  });
+  const more = el('div','why');
+  more.style.marginTop='14px';
+  more.innerHTML = '<b>找东西</b>：点右上「查找」，输入「睡衣」「鞋」「真丝」都行，结果会先说放在哪只箱。<br><br>'
+    + '<b>防重复买</b>：打开任意一件，顶部写着「同类还有 N 件」，直接列出编号和位置。<br><br>'
+    + '<b>微信里的图</b>：先长按图片「保存到相册」，再回这里「从相册选」。<br><br>'
+    + '<b>没照片的条目</b>：点开它，点那个灰色方框就能补一张。';
+  sheet.appendChild(more);
+  mask.classList.add('on');
+}
 const tipInstall = document.getElementById('tipInstall');
 if(tipInstall) tipInstall.onclick = ()=>{
   const ua = (navigator && navigator.userAgent) || '';
@@ -4036,7 +4061,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '103';
+  const BUILD = '104';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
