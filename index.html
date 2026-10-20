@@ -585,7 +585,7 @@ function save(){
     if(ok){
       DB.lastSaved = Date.now();
       Store.set(BAK, payload);          // 影子副本：主档被写坏也有后手
-      writeAutoBackup();                 // 同时写到本机文件（开了的话）
+      scheduleAutoBackup();              // 同时写到本机文件（开了的话，节流 3 秒）
       updateStoreStatus();
       return;
     }
@@ -627,6 +627,12 @@ async function restoreAutoBackupHandle(){
     autoFileState = perm === 'granted' ? 'on' : 'need-permission';
   }catch(e){}
 }
+let autoBakTimer = null;
+function scheduleAutoBackup(){
+  if(!autoFileHandle) return;
+  clearTimeout(autoBakTimer);
+  autoBakTimer = setTimeout(function(){ writeAutoBackup(); }, 3000);
+}
 async function writeAutoBackup(){
   if(!autoFileHandle) return;
   try{
@@ -655,7 +661,8 @@ function updateStoreStatus(){
   const auto = autoFileState==='on' ? '自动备份：开'
              : autoFileState==='need-permission' ? '自动备份：点「自动备份」重新授权'
              : '自动备份：关';
-  elx.textContent = '共 '+n+' 件 · ' + mode + ' · 上次保存 ' + t + ' · ' + auto;
+  const sz = DB.lastSize ? ' · ' + DB.lastSize.toFixed(1) + 'MB' : '';
+  elx.textContent = '共 '+n+' 件' + sz + ' · ' + mode + ' · 上次保存 ' + t + ' · ' + auto;
   elx.style.color = (Store.mode==='memory' || autoFileState==='need-permission') ? '#c0392b' : 'var(--sub)';
 }
 
@@ -834,7 +841,7 @@ function dominantColor(img){
   const r=Math.round(best.r/best.n), g=Math.round(best.g/best.n), b=Math.round(best.b/best.n);
   return {name: colorNameOf(r,g,b), hex:'#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('')};
 }
-function compress(file, maxSide=760){
+function compress(file, maxSide=660){
   return new Promise((resolve,reject)=>{
     const fr = new FileReader();
     fr.onerror = reject;
@@ -846,7 +853,7 @@ function compress(file, maxSide=760){
         const w = Math.round(img.width*sc), h = Math.round(img.height*sc);
         const c = document.createElement('canvas'); c.width=w; c.height=h;
         c.getContext('2d').drawImage(img,0,0,w,h);
-        resolve({dataURL:c.toDataURL('image/jpeg',0.72), img});
+        resolve({dataURL:c.toDataURL('image/jpeg',0.68), img});
       };
       img.src = fr.result;
     };
@@ -2679,7 +2686,7 @@ function importFromUrl(url){
       const w = Math.round(img.width*sc), h = Math.round(img.height*sc);
       const c = document.createElement('canvas'); c.width=w; c.height=h;
       c.getContext('2d').drawImage(img,0,0,w,h);
-      const dataURL = c.toDataURL('image/jpeg',0.72);
+      const dataURL = c.toDataURL('image/jpeg',0.68);
       pushItem(dataURL, dominantColor(img));
       save();
       document.getElementById('quickThumb').src = dataURL;
@@ -3459,7 +3466,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '85';
+  const BUILD = '86';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
