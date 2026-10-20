@@ -262,6 +262,7 @@
   <div class="head-in">
     <div class="brand">我的衣橱<small>WARDROBE · v3</small></div>
     <div class="head-spacer"></div>
+    <button class="icon-btn" id="btnFind">查找</button>
     <button class="icon-btn" id="btnExport">备份</button>
     <button class="icon-btn" id="btnImport">恢复</button>
     <button class="icon-btn" id="btnPrint">位置单</button>
@@ -2662,6 +2663,81 @@ document.getElementById('quickDone').onclick = ()=>{
   if(tab==='wardrobe') renderWardrobe();
 };
 
+/* ================= 查找 ================= */
+function findMatch(it, q){
+  const hay = [it.no, it.name, it.cat, it.sub, it.sleeve, it.material, it.color, it.desc, it.pair,
+    (it.season||[]).join(''), (it.scene||[]).join('')].filter(Boolean).join(' ').toLowerCase();
+  return hay.indexOf(q.toLowerCase()) >= 0;
+}
+function openFind(){
+  sheet.innerHTML=''; sheetHead('查找');
+  const f = el('div','field');
+  f.appendChild(el('div','lab','搜名字 / 品类 / 材质 / 颜色 / 编号'));
+  const ip = el('input'); ip.type='search'; ip.placeholder='睡衣 · 鞋 · 真丝 · CO-005';
+  f.appendChild(ip); sheet.appendChild(f);
+
+  const quick = el('div','chips');
+  ['睡衣','鞋','包','围巾','帽子','腰带','床品','外套','T恤','真丝'].forEach(k=>{
+    const b = el('button','chip', k);
+    b.style.fontSize='13px'; b.style.padding='4px 12px';
+    b.onclick = ()=>{ ip.value = k; run(k); };
+    quick.appendChild(b);
+  });
+  sheet.appendChild(quick);
+
+  const out = el('div'); sheet.appendChild(out);
+
+  function run(q){
+    out.innerHTML='';
+    const kw = (q||'').trim();
+    const all = DB.items.slice();
+    const list = kw ? all.filter(i=>findMatch(i, kw)) : [];
+    if(!kw){
+      out.appendChild(el('div','hint','输入关键词，或点上面的常用品类。结果会告诉你：有多少件、分别放在哪。'));
+      return;
+    }
+    if(!list.length){
+      out.appendChild(el('div','hint','没找到「'+kw+'」。换个词试试，或检查是不是还没入库。'));
+      return;
+    }
+    // 按位置汇总
+    const byLoc = {};
+    list.forEach(it=>{
+      const l = locOf(it);
+      const k = l ? locText(l) : '在外（没归位）';
+      byLoc[k] = (byLoc[k]||0)+1;
+    });
+    const sum = el('div','why');
+    sum.style.margin='12px 0';
+    sum.innerHTML = '<b>「'+esc(kw)+'」共 '+list.length+' 件</b><br>'
+      + Object.keys(byLoc).sort().map(k=>esc(k)+'：'+byLoc[k]+' 件').join(' ｜ ');
+    out.appendChild(sum);
+
+    const c = el('div','card'); c.style.overflow='hidden';
+    list.sort((a,b)=>{
+      const la = locOf(a), lb = locOf(b);
+      return (la?locText(la):'zz').localeCompare(lb?locText(lb):'zz');
+    }).forEach(it=>{
+      const l = locOf(it);
+      const r = el('div','row');
+      r.innerHTML = '<div class="th"><img src="'+it.photo+'" alt=""></div>'
+        + '<div class="bd"><div class="t1">'+(it.no?'<span style="color:var(--accent);font-size:11.5px;margin-right:6px">'+esc(it.no)+'</span>':'')+esc(it.name)+'</div>'
+        + '<div class="t2">'+esc([it.cat,it.sub,it.material,it.color].filter(Boolean).join(' · '))+'</div>'
+        + '<div class="t2" style="color:'+(l?'#3f5b4a':'#b4552f')+';font-weight:600">'
+        + (l? '放在 '+esc(locText(l)) : '在外（没归位）')+' · '+esc(ownerName(it.owner))+'</div></div>';
+      r.onclick = ()=> openItem(it.id);
+      c.appendChild(r);
+    });
+    out.appendChild(c);
+    out.appendChild(el('div','hint','点任意一行可以打开这件，看大图或改位置。'));
+  }
+  ip.oninput = ()=> run(ip.value);
+  ip.onchange = ()=> run(ip.value);
+  run('');
+  mask.classList.add('on');
+  setTimeout(function(){ try{ ip.focus(); }catch(e){} }, 120);
+}
+
 /* ================= 备份 / 恢复 / 打印 ================= */
 function doExport(){
   const blob = new Blob([JSON.stringify({items:DB.items, saved:DB.saved, locations:DB.locations, gaps:DB.gaps, v:3})], {type:'application/json'});
@@ -2670,6 +2746,7 @@ function doExport(){
   a.click(); toast('已导出备份文件');
 }
 document.getElementById('btnExport').onclick = doExport;
+document.getElementById('btnFind').onclick = openFind;
 document.getElementById('btnImport').onclick = ()=> document.getElementById('fileImport').click();
 document.getElementById('fileImport').onchange = e=>{
   const f = e.target.files[0]; e.target.value=''; if(!f) return;
