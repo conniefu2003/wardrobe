@@ -647,7 +647,16 @@ function save(){
 let autoFileHandle = null;
 let autoFileState = 'off';   // off / on / need-permission
 async function pickAutoBackupFile(){
-  if(!window.showSaveFilePicker){ toast('这个浏览器不支持选文件，请用 Edge / Chrome 打开'); return; }
+  if(!window.showSaveFilePicker){
+    // UC / 老浏览器：没有这个接口，改用「下载一份备份」当保险
+    alert('这个浏览器不支持「自动写入同一个文件」。\n\n'
+      + '在 UC 里请改用下面的办法：\n'
+      + '1) 点右上「备份」，会把整份数据存成一个文件到「下载」文件夹\n'
+      + '2) 每录完一批就点一次「备份」，尤其是当天录完的时候\n'
+      + '3) 想恢复时点「恢复」，选那个文件\n\n'
+      + '想彻底不丢，建议在电脑上用 Edge 打开，那边可以开「自动备份」。');
+    return;
+  }
   try{
     const h = await window.showSaveFilePicker({
       suggestedName: '我的衣橱_自动备份.json',
@@ -3664,10 +3673,19 @@ function openFind(){
 
 /* ================= 备份 / 恢复 / 打印 ================= */
 function doExport(){
-  const blob = new Blob([JSON.stringify({items:DB.items, saved:DB.saved, locations:DB.locations, gaps:DB.gaps, v:3})], {type:'application/json'});
-  const a = el('a'); a.href = URL.createObjectURL(blob);
+  const data = {
+    items:DB.items, saved:DB.saved, locations:DB.locations, gaps:DB.gaps,
+    intakes:DB.intakes||[], catalog:DB.catalog||null, owner:DB.owner, v:3
+  };
+  const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = el('a'); a.href = url;
   a.download = '我的衣橱备份_'+new Date().toISOString().slice(0,10)+'.json';
-  a.click(); toast('已导出备份文件');
+  a.style.display = 'none';
+  document.body.appendChild(a);   // UC 要求元素在文档里才触发下载
+  a.click();
+  setTimeout(function(){ try{ document.body.removeChild(a); URL.revokeObjectURL(url); }catch(e){} }, 3000);
+  toast('已导出备份文件（在「下载」里）');
 }
 document.getElementById('btnExport').onclick = doExport;
 document.getElementById('btnFind').onclick = openFind;
@@ -3683,6 +3701,8 @@ document.getElementById('fileImport').onchange = e=>{
       if(!Array.isArray(o.items)) throw new Error('bad');
       if(!confirm('导入会覆盖当前衣橱（'+DB.items.length+' 件），继续？')) return;
       DB.items=o.items; DB.saved=o.saved||[]; DB.locations=o.locations||[]; DB.gaps=o.gaps||[];
+      DB.intakes=o.intakes||[];
+      if(o.catalog){ DB.catalog=o.catalog; rebuildCatalog(); }
       migrate(); save(); renderAll(); toast('已恢复 '+o.items.length+' 件');
     }catch(err){ toast('这个文件不是衣橱备份'); }
   };
@@ -3933,6 +3953,7 @@ function showStoreBanner(){
   if(!bar) return;
   const ua = (navigator && navigator.userAgent) || '';
   const wechat = /MicroMessenger/i.test(ua);
+  const uc = /\bUCBrowser\b|\bUC\b.*Mobile|UCWEB/i.test(ua);
   const isFile = (location && location.protocol === 'file:');
   let msg;
   if(isFile){
@@ -3940,6 +3961,9 @@ function showStoreBanner(){
         + '改用这个网址打开：<a href="https://conniefu2003.github.io/wardrobe/" target="_blank">conniefu2003.github.io/wardrobe</a>';
   }else if(wechat){
     msg = '你在微信里打开，微信不让网页存东西。点右上角「···」→「在浏览器打开」，再重新加一次。';
+  }else if(uc){
+    msg = 'UC 有时会禁用本地存储。先退出私密/无痕模式；还不行就换 Chrome 打开一次。'
+        + '现在录的东西点「备份」马上导出，别等。';
   }else{
     msg = '这个浏览器禁用了本地存储。换 Chrome / Safari 打开；iPhone 还要看「设置 → Safari → 阻止所有 Cookie」。';
   }
@@ -3955,7 +3979,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '98';
+  const BUILD = '99';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
