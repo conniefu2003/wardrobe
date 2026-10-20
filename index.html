@@ -362,6 +362,7 @@
 <div id="fabWrap">
   <button id="fabManual" class="fab-mini">手动加一件</button>
   <button id="fabAlbum" class="fab-mini">从相册选</button>
+  <button id="fabShoot" class="fab-mini">按类连拍</button>
   <button id="fab">📷 拍照</button>
 </div>
 
@@ -383,6 +384,7 @@
 <div id="printArea"></div>
 <input type="file" id="filePick" accept="image/*" hidden>
 <input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
+<input type="file" id="fileShoot" accept="image/*" capture="environment" hidden>
 <input type="file" id="fileAlbum" accept="image/*" multiple hidden>
 <input type="file" id="fileImport" accept="application/json,.json" hidden>
 <div id="lightbox"><img id="lbImg" alt=""><div class="tip">点任意处关闭</div></div>
@@ -689,6 +691,7 @@ const CLOUD_SQL = "create table if not exists wardrobe (id text primary key, pay
   + "create policy \"allow anon all\" on wardrobe for all using (true) with check (true);";
 function cloudCfg(){ return DB.cloud || null; }
 function cloudReady(){ const c = cloudCfg(); return !!(c && c.url && c.key); }
+function cloudRoom(){ const c = cloudCfg(); return (c && c.room) || 'main'; }
 function cloudHeaders(c){
   return {
     'apikey': c.key,
@@ -707,7 +710,7 @@ async function cloudPush(silent){
   try{
     const r = await fetch(c.url.replace(/\/$/,'') + '/rest/v1/wardrobe', {
       method:'POST', headers: cloudHeaders(c),
-      body: JSON.stringify([{ id:'main', payload: payload, updated_at: new Date().toISOString() }])
+      body: JSON.stringify([{ id: cloudRoom(), payload: payload, updated_at: new Date().toISOString() }])
     });
     if(!r.ok) throw new Error('HTTP ' + r.status);
     DB.lastCloud = Date.now();
@@ -724,7 +727,7 @@ async function cloudPull(){
   const c = cloudCfg();
   if(!cloudReady()){ toast('还没配置云端'); return; }
   try{
-    const r = await fetch(c.url.replace(/\/$/,'') + '/rest/v1/wardrobe?id=eq.main&select=payload,updated_at', {headers: cloudHeaders(c)});
+    const r = await fetch(c.url.replace(/\/$/,'') + '/rest/v1/wardrobe?id=eq.' + encodeURIComponent(cloudRoom()) + '&select=payload,updated_at', {headers: cloudHeaders(c)});
     if(!r.ok) throw new Error('HTTP ' + r.status);
     const arr = await r.json();
     if(!arr.length || !arr[0].payload){ toast('云端还没有数据'); return; }
@@ -754,9 +757,20 @@ function openCloud(){
   const i2 = el('input'); i2.type='text'; i2.value = c.key||''; i2.placeholder='eyJhbGciOi...';
   f2.appendChild(i2); sheet.appendChild(f2);
 
+  const f2b = el('div','field');
+  f2b.appendChild(el('div','lab','同步码（自己起，几台设备填同一个）'));
+  const i3 = el('input'); i3.type='text';
+  i3.value = c.room || ('wb-' + Math.random().toString(36).slice(2,10));
+  i3.placeholder='wb-xxxxxxxx';
+  f2b.appendChild(i3);
+  const f2n = el('div','hint');
+  f2n.textContent = '同步码相当于保险箱编号：别人不知道它，就看不到你的数据。新设备填同一串即可。';
+  f2b.appendChild(f2n);
+  sheet.appendChild(f2b);
+
   const save1 = el('button','cta','保存配置');
   save1.onclick = ()=>{
-    DB.cloud = {url:(i1.value||'').trim(), key:(i2.value||'').trim(), auto:true};
+    DB.cloud = {url:(i1.value||'').trim(), key:(i2.value||'').trim(), room:(i3.value||'').trim() || 'main', auto:true};
     save(); toast('已保存'); updateStoreStatus();
   };
   sheet.appendChild(save1);
@@ -2765,6 +2779,117 @@ function commitDraft(){
   }
 }
 
+/* ================= 按类连拍 ================= */
+let shootPreset = null;
+let shootCount = 0;
+function openShoot(){
+  const st = {dept:'衣服', cat:'上装', sub:'', season:[], scene:[], locId:'', cond:''};
+  if(shootPreset){
+    st.dept = dept7Of(shootPreset.cat); st.cat = shootPreset.cat; st.sub = shootPreset.sub||'';
+    st.season = (shootPreset.season||[]).slice(); st.scene = (shootPreset.scene||[]).slice();
+    st.locId = shootPreset.locId||''; st.cond = shootPreset.cond||'';
+  }
+  const draw = ()=>{
+    sheet.innerHTML=''; sheetHead('按类连拍');
+    sheet.appendChild(el('div','hint','先定好这一批是什么（比如全是衬衫），然后连续拍，每张自动带上分类，不用逐件选。'));
+
+    const f1 = el('div','field');
+    f1.appendChild(el('div','lab','大类'));
+    const c1 = el('div','chips');
+    DEPT7_NAMES.forEach(function(d){
+      const b = el('button','chip'+(st.dept===d?' on':''), d);
+      b.onclick = function(){
+        st.dept=d;
+        const first = Object.keys(DEPTS7[d]||{})[0];
+        st.cat = first || '上装'; st.sub='';
+        draw();
+      };
+      c1.appendChild(b);
+    });
+    f1.appendChild(c1); sheet.appendChild(f1);
+
+    const f2 = el('div','field');
+    f2.appendChild(el('div','lab','品类'));
+    const c2 = el('div','chips');
+    Object.keys(DEPTS7[st.dept]||{}).forEach(function(c){
+      const b = el('button','chip'+(st.cat===c?' on':''), c);
+      b.onclick = function(){ st.cat=c; st.sub=''; draw(); };
+      c2.appendChild(b);
+    });
+    f2.appendChild(c2); sheet.appendChild(f2);
+
+    const subs = SUBCATS[st.cat]||[];
+    if(subs.length){
+      const f3 = el('div','field');
+      f3.appendChild(el('div','lab','款式'));
+      const c3 = el('div','chips');
+      subs.forEach(function(s){
+        const b = el('button','chip'+(st.sub===s?' on':''), s);
+        b.onclick = function(){ st.sub = st.sub===s?'':s; draw(); };
+        c3.appendChild(b);
+      });
+      f3.appendChild(c3); sheet.appendChild(f3);
+    }
+
+    const f4 = el('div','field');
+    f4.appendChild(el('div','lab','季节（可空，整批统一）'));
+    const c4 = el('div','chips');
+    SEASONS.forEach(function(s){
+      const on = st.season.indexOf(s)>=0;
+      const b = el('button','chip'+(on?' on':''), s);
+      b.onclick = function(){
+        st.season = on ? st.season.filter(function(x){return x!==s;}) : st.season.concat(s);
+        draw();
+      };
+      c4.appendChild(b);
+    });
+    f4.appendChild(c4); sheet.appendChild(f4);
+
+    const f5 = el('div','field');
+    f5.appendChild(el('div','lab','放在哪（可空）'));
+    const c5 = el('div','chips');
+    const b5 = el('button','chip'+(st.locId===''?' on':''), '先不填');
+    b5.onclick = function(){ st.locId=''; draw(); };
+    c5.appendChild(b5);
+    DB.locations.filter(function(l){ return !l.owner || l.owner===DB.owner; }).forEach(function(l){
+      const b = el('button','chip'+(st.locId===l.id?' on':''), locText(l));
+      b.onclick = function(){ st.locId=l.id; draw(); };
+      c5.appendChild(b);
+    });
+    f5.appendChild(c5); sheet.appendChild(f5);
+
+    const go = el('button','cta','开始拍 · ' + st.cat + (st.sub? ' · '+st.sub : ''));
+    go.onclick = function(){
+      shootPreset = {cat:st.cat, sub:st.sub, season:st.season.slice(), scene:st.scene.slice(), locId:st.locId, cond:st.cond};
+      shootCount = 0;
+      closeSheet();
+      document.getElementById('fileShoot').click();
+    };
+    sheet.appendChild(go);
+    mask.classList.add('on');
+  };
+  draw();
+}
+async function shootImport(files){
+  const arr = Array.prototype.slice.call(files||[]);
+  if(!arr.length) return;
+  let ok = 0;
+  for(let i=0;i<arr.length;i++){
+    quickMsg('正在处理 '+(i+1)+'/'+arr.length+'…','');
+    try{
+      const r = await compress(arr[i]);
+      pushItem(r.dataURL, dominantColor(r.img), shootPreset || {});
+      document.getElementById('quickThumb').src = r.dataURL;
+      ok++;
+    }catch(e){ console.warn(e); }
+  }
+  shootCount += ok;
+  save();
+  const p = shootPreset || {};
+  quickMsg('已拍 <b>'+shootCount+'</b> 件 · '+esc(p.cat||'')+(p.sub? ' · '+esc(p.sub):''), '这批都归好了，接着拍或点完成');
+  renderAll();
+}
+
 /* ================= 拍照 / 批量入库 ================= */
 function pendingCount(){ return DB.items.filter(i=>i.cat==='待分类' && i.owner===DB.owner).length; }
 function nextUncatName(){ return '待分类 ' + (pendingCount()+1); }
@@ -2774,15 +2899,21 @@ function quickMsg(title, sub){
   const m = document.getElementById('quickMsg');
   if(m) m.innerHTML = title + (sub? '<small>'+sub+'</small>' : '');
 }
-function pushItem(dataURL, col){
-  DB.items.unshift({
-    id: uid(), photo: dataURL, name: nextUncatName(), owner: DB.owner,
-    no: nextNo(DB.owner),
-    cat: '待分类', sub: '', sleeve: '', material: '', desc: '',
+function pushItem(dataURL, col, preset){
+  const p = preset || {};
+  const cat = p.cat || '待分类';
+  const obj = {
+    id: uid(), photo: dataURL,
+    name: cat==='待分类' ? nextUncatName() : ((col&&col.name)||'') + (p.sub || cat),
+    owner: DB.owner, no: nextNo(DB.owner),
+    cat: cat, sub: p.sub||'', sleeve: p.sleeve||'', material: p.material||'', desc: '',
+    cond: p.cond||'',
     color: (col&&col.name)||'灰', hex: (col&&col.hex)||'#9b9b9b',
-    season: [], scene: [],
-    wear: '', reason: '', locId: '', status:'在穿', createdAt: Date.now()
-  });
+    season: (p.season||[]).slice(), scene: (p.scene||[]).slice(),
+    wear: p.wear||'', reason:'', locId: p.locId||'', status:'在穿', createdAt: Date.now()
+  };
+  DB.items.unshift(obj);
+  return obj;
 }
 function goPending(){ view.cat='待分类'; view.season='全部'; view.wear='全部'; view.loc='全部'; showTab('wardrobe'); }
 async function importFiles(files){
@@ -3272,10 +3403,15 @@ document.getElementById('filePick').onchange = async e=>{
   }catch(err){ console.error(err); toast('这张图读不了，换一张'); }
 };
 document.getElementById('fileCam').onchange = e=>{ const fs=e.target.files; e.target.value=''; if(fs&&fs.length) importFiles(fs); };
+document.getElementById('fileShoot').onchange = e=>{ const fs=e.target.files; e.target.value=''; if(fs&&fs.length) shootImport(fs); };
 document.getElementById('fileAlbum').onchange = e=>{ const fs=e.target.files; e.target.value=''; if(fs&&fs.length) importFiles(fs); };
-document.getElementById('quickAgain').onclick = ()=> document.getElementById('fileCam').click();
+document.getElementById('quickAgain').onclick = ()=>{
+  if(shootPreset) document.getElementById('fileShoot').click();
+  else document.getElementById('fileCam').click();
+};
 document.getElementById('quickDone').onclick = ()=>{
   document.getElementById('quickbar').classList.remove('on');
+  shootPreset = null; shootCount = 0;
   if(tab==='wardrobe') renderWardrobe();
 };
 
@@ -3566,6 +3702,7 @@ window.addEventListener('paste', e=>{
 });
 document.getElementById('fab').onclick = ()=> document.getElementById('fileCam').click();
 document.getElementById('fabAlbum').onclick = ()=> document.getElementById('fileAlbum').click();
+document.getElementById('fabShoot').onclick = openShoot;
 document.getElementById('fabManual').onclick = openAdd;
 (function(){
   const touch = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches);
