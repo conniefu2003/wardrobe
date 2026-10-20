@@ -1594,7 +1594,7 @@ function renderSeasonPlan(){
 }
 
 /* ================= 渲染：清单 ================= */
-function renderLists(){ renderListGroups(); renderAudit(); renderUnworn(); renderGaps(); renderLocs(); }
+function renderLists(){ renderListGroups(); renderStock(); renderAudit(); renderUnworn(); renderGaps(); renderLocs(); }
 
 /* 清单的分法：按季节 / 按频率 / 按换季逻辑 */
 let listMode = '按季节';
@@ -1662,6 +1662,100 @@ function renderListGroups(){
   renderGroup('该拿出来（'+s+'，收在箱里）', takeOut);
   renderGroup('该收起来（不是'+s+'季，还在外面）', putAway);
 }
+
+/* 盘点：逐件核一遍，找不到的单独列出来 */
+function renderStock(){
+  const wrap = document.getElementById('stockWrap'); if(!wrap) return;
+  wrap.innerHTML='';
+  const missed = DB.items.filter(function(i){ return i.owner===DB.owner && i.missedAt && !i.retiredAt; });
+  const cnt = document.getElementById('cStock');
+  if(cnt) cnt.textContent = missed.length;
+  const last = DB.stockAt ? new Date(DB.stockAt).toLocaleDateString('zh-CN') : '从来没盘过';
+  const line = el('div','hint');
+  line.style.margin = '0 2px 10px';
+  line.textContent = '上次盘点：' + last + (missed.length? '；有 '+missed.length+' 件当时没找到' : '');
+  wrap.appendChild(line);
+  if(!missed.length) return;
+  const c = el('div','card'); c.style.overflow='hidden';
+  const h = el('div');
+  h.style.cssText='padding:9px 14px;background:#fbeee8;border-bottom:1px solid var(--line)';
+  h.innerHTML = '<b style="font-size:13px;color:#b4552f">盘点时没找到 · '+missed.length+' 件</b>';
+  c.appendChild(h);
+  missed.slice(0,8).forEach(function(it){
+    const l = locOf(it);
+    const r = el('div','row');
+    r.innerHTML = '<div class="th"><img src="'+it.photo+'" alt=""></div>'
+      + '<div class="bd"><div class="t1">'+esc(it.no||'')+' '+esc(it.name)+'</div>'
+      + '<div class="t2">'+(l?'应该在 '+esc(locText(l)):'没归位')+'</div></div>';
+    const b = el('button','mini','找到并清标记');
+    b.onclick = function(ev){ ev.stopPropagation(); it.missedAt=''; save(); renderStock(); toast('已清标记'); };
+    r.appendChild(b);
+    r.onclick = function(){ openItem(it.id); };
+    c.appendChild(r);
+  });
+  wrap.appendChild(c);
+}
+function openStocktake(){
+  if(!DB.items.filter(function(i){ return i.owner===DB.owner && !i.retiredAt; }).length){
+    toast('这个衣橱还没有东西，没什么可盘的'); return;
+  }
+  let scope = '全部';
+  const chosen = {};   // id -> 找到了吗（默认 true）
+  const draw = function(){
+    sheet.innerHTML=''; sheetHead('盘点 · 逐件核对');
+    const tip = el('div','hint');
+    tip.textContent = '默认都算「在」。找不到的那件，点一下取消勾选，保存后会单独列出来。';
+    sheet.appendChild(tip);
+    const chips = el('div','chips');
+    ['全部'].concat(DB.locations.filter(function(l){ return !l.owner || l.owner===DB.owner; }).map(function(l){ return locText(l); })).forEach(function(k){
+      const b = el('button','chip'+(scope===k?' on':''), k);
+      b.onclick = function(){ scope=k; draw(); };
+      chips.appendChild(b);
+    });
+    sheet.appendChild(chips);
+
+    const list = DB.items.filter(function(i){
+      if(i.owner!==DB.owner || i.retiredAt) return false;
+      if(scope==='全部') return true;
+      const l = locOf(i);
+      return l && locText(l)===scope;
+    });
+    const card = el('div','card');
+    card.style.marginTop='12px'; card.style.overflow='hidden';
+    list.forEach(function(it){
+      if(chosen[it.id] === undefined) chosen[it.id] = true;
+      const on = chosen[it.id];
+      const r = el('div','row');
+      const cb = el('div','cbox'+(on?' on':''), on?'✓':'');
+      cb.onclick = function(ev){ ev.stopPropagation(); chosen[it.id]=!on; draw(); };
+      const th = el('div','th'); const img = el('img'); img.src = it.photo; th.appendChild(img);
+      const bd = el('div','bd');
+      const l = locOf(it);
+      bd.innerHTML = '<div class="t1">'+esc(it.no||'')+' '+esc(it.name)+'</div>'
+        + '<div class="t2">'+esc([it.cat,it.sub,it.color].filter(Boolean).join(' · '))+(l?' · '+esc(locText(l)):' · 在外')+'</div>';
+      r.appendChild(cb); r.appendChild(th); r.appendChild(bd);
+      card.appendChild(r);
+    });
+    sheet.appendChild(card);
+
+    const gone = Object.keys(chosen).filter(function(k){ return chosen[k]===false; }).length;
+    const cta = el('button','cta','保存盘点（共 '+list.length+' 件'+(gone? '，'+gone+' 件没找到':'')+'）');
+    cta.onclick = function(){
+      const now = Date.now();
+      DB.items.forEach(function(i){
+        if(i.owner!==DB.owner || i.retiredAt) return;
+        if(chosen[i.id] === undefined) return;
+        i.missedAt = chosen[i.id] ? '' : now;
+      });
+      DB.stockAt = now;
+      save(); closeSheet(); renderLists(); toast('盘点完成');
+    };
+    sheet.appendChild(cta);
+    mask.classList.add('on');
+  };
+  draw();
+}
+document.getElementById('btnStock').onclick = openStocktake;
 
 /* 重复与过期：同类扎堆、计划淘汰日已过 */
 function auditData(){
@@ -3074,6 +3168,12 @@ async function runDiag(){
   const rows = [];
   rows.push('存储方式：' + Store.mode);
   rows.push('当前数据库里的件数：' + DB.items.length);
+  const byOwner = {};
+  DB.items.forEach(function(i){ byOwner[i.owner] = (byOwner[i.owner]||0)+1; });
+  rows.push('按归属分：' + (Object.keys(byOwner).map(function(k){ return k+'='+byOwner[k]; }).join('  ') || '（空）'));
+  const byCat = {};
+  DB.items.forEach(function(i){ byCat[i.cat] = (byCat[i.cat]||0)+1; });
+  rows.push('按品类分：' + (Object.keys(byCat).map(function(k){ return k+'='+byCat[k]; }).join('  ') || '（空）'));
   rows.push('Store.err：' + (Store.err || '无'));
   rows.push('');
   const keys = ['wardrobe.v3','wardrobe.bak','wardrobe.v2'];
@@ -3141,7 +3241,8 @@ function renderOwnerBox(){
   if(!box) return;
   box.innerHTML='';
   OWNERS.forEach(function(x){
-    const b = el('button', (DB.owner===x[0] && !pendingAll) ? 'on':'', x[1]);
+    const n = DB.items.filter(function(i){ return i.owner===x[0] && !i.retiredAt; }).length;
+    const b = el('button', (DB.owner===x[0] && !pendingAll) ? 'on':'', x[1] + ' ' + n);
     b.dataset.owner = x[0];
     b.onclick = function(){
       pendingAll = false;
@@ -3230,7 +3331,7 @@ curSeason = seasonByMonth();
 const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '79';
+  const BUILD = '80';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
