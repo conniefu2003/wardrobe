@@ -335,6 +335,10 @@
     <div class="frow"><span class="fl">分类看</span><div class="chips xs" id="listModeChips"></div></div>
     <div id="listGroups"></div>
 
+    <div class="sec"><h2>盘点</h2><span class="cnt" id="cStock">0</span><span class="sp"></span>
+      <button class="mini ghost" id="btnStock">开始盘点</button></div>
+    <div id="stockWrap"></div>
+
     <div class="sec"><h2>重复与过期</h2><span class="cnt warn" id="cAudit">0</span><span class="sp"></span></div>
     <div class="hint" style="margin:-4px 2px 12px">同类超过 3 件的、计划淘汰日期已过的——这些都该处理掉，别再买了。</div>
     <div id="auditWrap"></div>
@@ -989,41 +993,10 @@ function renderSeasonPickers(){
   });
 }
 function renderOutfits(){
-  const box = document.getElementById('outfitList');
-  if(!box) return;
-  const hint = document.getElementById('outfitHint');
-  box.innerHTML='';
-  const mine = DB.items.filter(i=>i.owner===DB.owner);
-  if(!mine.length){
-    hint.textContent='';
-    box.appendChild(emptyCard('这件衣橱还是空的','点右下角「拍照」或「从相册选」，先入库，品类回头补。'));
-    return;
-  }
-  const cur = pickOutfits({season:curSeason});
-  if(!cur.length){
-    hint.textContent='';
-    box.appendChild(emptyCard('这个季节还配不出整套',
-      DB.owner+'的衣橱里，'+curSeason+'季至少要有一件「上装」和一件「下装」（或一条连衣裙）。'));
-    return;
-  }
-  hint.textContent = DB.owner + ' · ' + curSeason + ' · 从衣橱现配的 '+cur.length+' 套';
-  cur.forEach((o,i)=>box.appendChild(outfitCard(o,i)));
+  /* 搭配页已下线，保留空实现，避免旧调用报错 */
 }
 function renderSaved(){
-  const wrap = document.getElementById('savedBlock');
-  if(!wrap) return;
-  wrap.innerHTML='';
-  const mine = DB.saved.filter(s=>s.ids.some(id=>{
-    const it = DB.items.find(x=>x.id===id); return it && it.owner===DB.owner;
-  }));
-  if(!mine.length) return;
-  const h = el('div','sec'); h.innerHTML='<h2>收藏的搭配</h2>';
-  wrap.appendChild(h);
-  mine.slice().reverse().slice(0,6).forEach(s=>{
-    const parts = s.ids.map(id=>DB.items.find(x=>x.id===id)).filter(Boolean);
-    if(!parts.length) return;
-    wrap.appendChild(outfitCard({parts, score:s.score}, 0, false));
-  });
+  /* 收藏页已下线，保留空实现 */
 }
 
 /* ================= 渲染：衣橱 ================= */
@@ -3466,7 +3439,7 @@ const WANT_DIAG = (location.search||'').indexOf('diag') >= 0;
 const WANT_TEST = (location.search||'').indexOf('selftest') >= 0;
 /* 自更新：页面是旧版时，自动换成新版地址再打开一次（同一会话只做一次，避免循环） */
 (function(){
-  const BUILD = '86';
+  const BUILD = '87';
   const bv = document.getElementById('brandVer');
   if(bv) bv.textContent = 'WARDROBE · v' + (parseInt(BUILD,10)/10).toFixed(1);
   try{
