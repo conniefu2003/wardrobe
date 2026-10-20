@@ -378,7 +378,7 @@
 <script>
 /* ================= 常量 ================= */
 /* 品类目录（Connie 定的 11 个，平铺） */
-const CATS = ['上装','下装','外套','连衣裙','睡衣','鞋','包','围巾','帽子','腰带','床品'];
+const CATS = ['上装','下装','外套','连衣裙','睡衣','鞋','包','围巾','帽子','腰带','床品','家居用品'];
 const SUBCATS = {
   '上装':['T恤','衬衫','Polo衫','卫衣','针织衫','毛衣','马甲','吊带','打底衫'],
   '下装':['牛仔裤','休闲裤','西装裤','阔腿裤','运动裤','短裤','半身裙','打底裤'],
@@ -390,7 +390,8 @@ const SUBCATS = {
   '围巾':['真丝围巾','羊绒围巾','棉麻围巾','披肩'],
   '帽子':['棒球帽','贝雷帽','针织帽','渔夫帽','遮阳帽'],
   '腰带':['皮带','细腰带','宽腰封'],
-  '床品':['被子','被套','四件套','枕套','枕头','床单','毯子','床垫套']
+  '床品':['被子','被套','四件套','枕套','枕头','床单','毯子','床垫套'],
+  '家居用品':['毛巾','浴巾','收纳箱','收纳盒','清洁用品','厨房用品','餐具','装饰摆件','日用品','小家电']
 };
 const SLEEVES = ['无袖','短袖','中袖','长袖'];
 const MATERIALS = ['棉','麻','真丝','雪纺','羊毛','羊绒','针织','牛仔','涤纶','混纺'];
@@ -402,6 +403,7 @@ function materialsFor(cat){
   if(cat==='鞋') return MATERIALS_SHOE;
   if(cat==='包') return MATERIALS_BAG;
   if(cat==='床品') return MATERIALS_HOME;
+  if(cat==='家居用品') return ['棉','涤纶','不锈钢','塑料','陶瓷','木质','玻璃','竹藤'];
   if(cat==='围巾'||cat==='帽子'||cat==='腰带') return MATERIALS_ACC;
   return MATERIALS;
 }
@@ -1660,8 +1662,12 @@ function openItem(id, jumpPair){
   sheetHead((it.no? it.no+' · ':'') + it.name, {onDelete: function(){ armDelete(it, this); }});
 
   const f = el('div','field');
-  f.innerHTML = '<div class="pick" style="aspect-ratio:4/5;cursor:zoom-in"><img src="'+it.photo+'" alt=""></div>';
-  f.firstChild.onclick = function(){ openPhoto(it.photo); };
+  const pk = el('div','pick');
+  pk.style.cssText = 'aspect-ratio:4/5;cursor:zoom-in';
+  const im = el('img'); im.src = it.photo; im.alt='';
+  pk.appendChild(im);
+  pk.onclick = function(){ openPhoto(it.photo); };
+  f.appendChild(pk);
   sheet.appendChild(f);
 
   const info = el('div','why');
@@ -1669,6 +1675,26 @@ function openItem(id, jumpPair){
     + it.cat+(it.sub?' · '+it.sub:'')+(it.sleeve?' · '+it.sleeve:'')
     + (it.material?' · '+it.material:'') + ' ｜ '+it.color+' ｜ '+(it.season||[]).join('/');
   sheet.appendChild(info);
+
+  // 同类已有：买之前先看这里，避免重复买
+  const same = DB.items.filter(function(x){
+    if(x.id===it.id) return false;
+    if(x.owner!==it.owner) return false;
+    if(x.cat!==it.cat) return false;
+    if(it.sub && x.sub && x.sub!==it.sub) return false;
+    return true;
+  });
+  if(same.length){
+    const sb = el('div','why');
+    sb.style.marginTop='10px';
+    sb.innerHTML = '<b>同类还有 '+same.length+' 件</b>（买之前先看这里）<br>'
+      + same.slice(0,8).map(function(x){
+          const l = locOf(x);
+          return esc(x.no||'') + ' ' + esc(x.name) + ' → ' + esc(l? locText(l) : '在外');
+        }).join('<br>')
+      + (same.length>8? '<br>…':'');
+    sheet.appendChild(sb);
+  }
 
   // 品类
   const fc = el('div','field');
